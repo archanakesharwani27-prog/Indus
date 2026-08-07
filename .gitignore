@@ -74,5 +74,6 @@ htmlcov/
 temp/
 tmp/
 
-# Node modules (if any)
-node_modules/
+# Browser session data (large, user-specific)
+whatsapp_session/
+whatsapp_session_edge/
