@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="green">#4CAF50</color>
+    <color name="red">#F44336</color>
+    <color name="orange">#FF9800</color>
+    <color name="blue">#2196F3</color>
+    <color name="purple">#9C27B0</color>
+    <color name="indus_primary">#1E88E5</color>
+    <color name="indus_primary_dark">#1565C0</color>
+    <color name="indus_accent">#FF4081</color>
+</resources>

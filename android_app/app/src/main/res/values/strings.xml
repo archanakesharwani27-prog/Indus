@@ -1,0 +1,49 @@
+<resources>
+    <string name="app_name">IndusDroid</string>
+    <string name="accessibility_service_name">Indus Accessibility Service</string>
+    <string name="notification_listener_name">Indus Notification Listener</string>
+    
+    <!-- Pairing -->
+    <string name="pairing_title">Pair with Indus PC</string>
+    <string name="pairing_instructions">Open Indus on your PC and scan this QR code or enter the PIN below</string>
+    <string name="pairing_pin_label">Pairing PIN</string>
+    <string name="pairing_confirm">Confirm Pairing</string>
+    <string name="pairing_success">Successfully paired with Indus!</string>
+    <string name="pairing_failed">Pairing failed. Please try again.</string>
+    <string name="pairing_expired">PIN expired. Generate a new one.</string>
+    
+    <!-- Permissions -->
+    <string name="permission_accessibility_title">Accessibility Permission</string>
+    <string name="permission_accessibility_message">Indus needs accessibility permission to control your phone (tap, swipe, type).</string>
+    <string name="permission_notification_title">Notification Permission</string>
+    <string name="permission_notification_message">Indus needs notification access to read your notifications.</string>
+    <string name="permission_phone_title">Phone Permission</string>
+    <string name="permission_phone_message">Indus needs phone permission to answer/decline calls.</string>
+    <string name="permission_sms_title">SMS Permission</string>
+    <string name="permission_sms_message">Indus needs SMS permission to send messages.</string>
+    <string name="permission_media_title">Media Permission</string>
+    <string name="permission_media_message">Indus needs media permission to control playback.</string>
+    
+    <!-- Settings -->
+    <string name="settings_title">Indus Settings</string>
+    <string name="settings_connection">Connection</string>
+    <string name="settings_permissions">Permissions</string>
+    <string name="settings_about">About</string>
+    <string name="settings_server_port">Server Port</string>
+    <string name="settings_auto_start">Auto-start on boot</string>
+    <string name="settings_show_notifications">Show service notification</string>
+    
+    <!-- Status -->
+    <string name="status_disconnected">Disconnected</string>
+    <string name="status_connecting">Connecting…</string>
+    <string name="status_connected">Connected</string>
+    <string name="status_pairing">Pairing…</string>
+    <string name="status_paired">Paired</string>
+    
+    <!-- Actions -->
+    <string name="action_grant">Grant</string>
+    <string name="action_deny">Deny</string>
+    <string name="action_open_settings">Open Settings</string>
+    <string name="action_retry">Retry</string>
+    <string name="action_done">Done</string>
+</resources>

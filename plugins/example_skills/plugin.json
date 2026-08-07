@@ -1,0 +1,12 @@
+{
+    "name": "example_skills",
+    "version": "1.0.0",
+    "description": "Example custom skills for Indus",
+    "author": "Indus Team",
+    "main": "skills.py",
+    "skills": [
+        "CustomCalcSkill",
+        "WeatherSkill",
+        "TimerSkill"
+    ]
+}

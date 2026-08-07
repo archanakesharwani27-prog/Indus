@@ -1,0 +1,70 @@
+# Indus Configuration
+# Copy to config.toml and modify as needed
+
+[general]
+name = "Indus"
+wake_words = ["hey indus", "jarvis", "indus"]
+language = "hi-EN"  # Hinglish support
+response_mode = "voice"  # voice | text | auto
+
+[voice]
+stt_provider = "openai_whisper"
+tts_provider = "openai_tts"
+tts_voice = "nova"
+sample_rate = 16000
+silence_threshold = 0.01
+max_recording_seconds = 30
+
+[llm]
+provider = "nvidia"  # nvidia | gemini | mock
+model = "nvidia/nemotron-3-ultra-550b-a55b"
+temperature = 0.7
+max_tokens = 4096
+
+[memory]
+hot_db_path = "indus.db"
+vector_db_url = "http://localhost:6333"
+embedding_model = "text-embedding-3-small"
+consolidation_interval_hours = 6
+max_hot_messages = 50
+
+[system]
+# Apps that can be launched without extra confirmation
+allowed_apps = [
+    "code", "chrome", "firefox", "edge",
+    "notepad", "calc", "explorer",
+    "whatsapp", "teams", "discord",
+    "spotify", "vlc", "paint",
+    "cmd", "powershell", "wt",
+    "word", "excel", "powerpoint", "outlook"
+]
+
+# Commands that are blocked for safety
+blocked_commands = [
+    "format", "del /f", "rm -rf",
+    "shutdown", "restart", "taskkill /f",
+    "diskpart", "reg delete"
+]
+
+require_confirmation = true
+screenshot_ocr = "tesseract"  # tesseract | gemini_vision
+
+[android]
+auto_connect = true
+pairing_timeout = 30
+websocket_reconnect_interval = 5
+
+[vision]
+face_recognition_threshold = 0.6
+camera_index = 0
+screen_analysis_provider = "gemini_vision"
+
+[proactive]
+enabled = true
+check_interval_seconds = 60
+suggestion_cooldown_minutes = 10
+
+[security]
+encrypt_memory = true
+audit_log_path = "logs/audit.log"
+api_key_rotation_days = 90

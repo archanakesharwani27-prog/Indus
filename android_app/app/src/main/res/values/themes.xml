@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <style name="Theme.IndusDroid" parent="Theme.MaterialComponents.DayNight.DarkActionBar">
+        <item name="colorPrimary">@color/indus_primary</item>
+        <item name="colorPrimaryVariant">@color/indus_primary_dark</item>
+        <item name="colorOnPrimary">@android:color/white</item>
+        <item name="colorSecondary">@color/indus_accent</item>
+        <item name="colorSecondaryVariant">@color/indus_accent</item>
+        <item name="colorOnSecondary">@android:color/white</item>
+        <item name="android:statusBarColor">?attr/colorPrimaryVariant</item>
+    </style>
+
+    <style name="Theme.IndusDroid.NoActionBar" parent="Theme.IndusDroid">
+        <item name="windowActionBar">false</item>
+        <item name="windowNoTitle">true</item>
+    </style>
+
+    <style name="Theme.IndusDroid.AppBarOverlay" parent="ThemeOverlay.MaterialComponents.Dark.ActionBar" />
+    <style name="Theme.IndusDroid.PopupOverlay" parent="ThemeOverlay.MaterialComponents.Light" />
+</resources>
