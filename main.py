@@ -83,36 +83,65 @@ RECEIVE_SAMPLE_RATE = 24000
 CHUNK_SIZE          = 1024
 
 
-def _get_api_key() -> str:
-    """Load Gemini API key. Shows a clear error dialog if config is missing."""
+def _prompt_for_api_key() -> str:
+    """Prompt the user with a sleek Qt dialog on first launch to enter their Gemini API key."""
     try:
-        with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        key = data.get("gemini_api_key", "").strip()
-        if not key:
-            _show_startup_error(
-                "Gemini API Key Missing",
-                f"'gemini_api_key' not found in:\n{API_CONFIG_PATH}\n\n"
-                "Please add your Gemini API key to config/api_keys.json:\n"
-                '{"gemini_api_key": "AIza..."}'
-            )
-            sys.exit(1)
-        return key
-    except FileNotFoundError:
+        from PyQt6.QtWidgets import QApplication, QInputDialog, QLineEdit
+        app = QApplication.instance() or QApplication(sys.argv)
+        key, ok = QInputDialog.getText(
+            None,
+            "INDUS — First Launch Setup",
+            "Welcome to INDUS AI Assistant!\n\nPlease enter your Google Gemini API Key:\n(Get your free key at https://aistudio.google.com/)",
+            QLineEdit.EchoMode.Normal,
+            ""
+        )
+        if ok and key.strip():
+            api_key = key.strip()
+            API_CONFIG_PATH.parent.mkdir(parents=True, exist_ok=True)
+            existing = {}
+            if API_CONFIG_PATH.exists():
+                try:
+                    with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
+                        existing = json.load(f)
+                except Exception:
+                    existing = {}
+            existing["gemini_api_key"] = api_key
+            if "os_system" not in existing:
+                existing["os_system"] = "windows"
+            with open(API_CONFIG_PATH, "w", encoding="utf-8") as f:
+                json.dump(existing, f, indent=4)
+            print(f"[INDUS] Gemini API key saved to {API_CONFIG_PATH}")
+            return api_key
+    except Exception as e:
+        print(f"[INDUS] GUI Prompt error: {e}")
+    return ""
+
+
+def _get_api_key() -> str:
+    """Load Gemini API key. Prompts user interactively on first launch if missing."""
+    key = ""
+    try:
+        if API_CONFIG_PATH.exists():
+            with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            key = data.get("gemini_api_key", "").strip()
+    except Exception:
+        key = ""
+
+    # If key is missing, prompt user with interactive GUI dialog
+    if not key:
+        key = _prompt_for_api_key()
+
+    if not key:
         _show_startup_error(
-            "Config File Missing",
-            f"Cannot find config file:\n{API_CONFIG_PATH}\n\n"
-            "Please create config/api_keys.json with your Gemini API key:\n"
-            '{"gemini_api_key": "AIza..."}'
+            "Gemini API Key Required",
+            "INDUS requires a Gemini API key to operate.\n\n"
+            "You can get a free API key at:\nhttps://aistudio.google.com/\n\n"
+            "Please restart INDUS and enter your key when prompted."
         )
         sys.exit(1)
-    except json.JSONDecodeError as e:
-        _show_startup_error(
-            "Config File Invalid",
-            f"config/api_keys.json is not valid JSON:\n{e}\n\n"
-            "Please fix the JSON syntax and restart INDUS."
-        )
-        sys.exit(1)
+
+    return key
 
 
 def _show_startup_error(title: str, message: str) -> None:
