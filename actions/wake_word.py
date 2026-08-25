@@ -62,7 +62,7 @@ class WakeWordController:
 
     def __init__(
         self,
-        inactivity_timeout: float = 8.0,
+        inactivity_timeout: float = 45.0,
         sample_rate: int = 16000,
         on_activate: Optional[Callable[[str, bytes], None]] = None,
         on_deactivate: Optional[Callable[[str], None]] = None,

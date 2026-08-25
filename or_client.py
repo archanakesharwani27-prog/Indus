@@ -99,6 +99,74 @@ class OpenRouterClient:
         self.groq_key = _load_groq_key()
         self._headers["Authorization"] = f"Bearer {self.api_key}"
 
+    def _call_gemini(
+        self,
+        messages: list[dict],
+        max_tokens: int = DEFAULT_MAX_TOKENS,
+        temperature: float = DEFAULT_TEMPERATURE,
+    ) -> Optional[str]:
+        """Direct Google Gemini call using official google.genai SDK as primary tier."""
+        try:
+            from google import genai
+            from google.genai import types
+            with open(API_KEY_PATH, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            gemini_key = data.get("gemini_api_key", "").strip()
+            if not gemini_key:
+                return None
+
+            gclient = genai.Client(api_key=gemini_key)
+            system_inst = None
+            contents = []
+            for m in messages:
+                if m.get("role") == "system":
+                    system_inst = m.get("content", "")
+                elif m.get("role") == "user":
+                    mc = m.get("content", "")
+                    if isinstance(mc, str):
+                        contents.append(mc)
+                    elif isinstance(mc, list):
+                        for part in mc:
+                            if isinstance(part, dict):
+                                if part.get("type") == "text":
+                                    contents.append(part.get("text", ""))
+                                elif part.get("type") == "image_url":
+                                    url_val = part.get("image_url", {}).get("url", "")
+                                    if "base64," in url_val:
+                                        header, b64 = url_val.split("base64,", 1)
+                                        mime = header.replace("data:", "").replace(";", "") or "image/png"
+                                        img_bytes = base64.b64decode(b64)
+                                        contents.append(types.Part.from_bytes(data=img_bytes, mime_type=mime))
+
+            config = types.GenerateContentConfig(
+                max_output_tokens=max_tokens,
+                temperature=temperature,
+                system_instruction=system_inst if system_inst else None,
+            )
+            for model_name in [
+                "gemini-2.5-flash",
+                "gemini-2.5-flash-lite",
+                "gemini-3.5-flash",
+                "gemini-3.7-flash",
+                "gemini-3.6-flash",
+                "gemini-flash-latest",
+            ]:
+                try:
+                    resp = gclient.models.generate_content(
+                        model=model_name,
+                        contents=contents,
+                        config=config,
+                    )
+                    if resp and resp.text:
+                        logger.info(f"[Gemini Direct] [OK] Success via {model_name}")
+                        return resp.text.strip()
+                except Exception as me:
+                    logger.warning(f"[Gemini Direct] {model_name} failed: {me}")
+                    continue
+        except Exception as e:
+            logger.warning(f"[Gemini Direct] global error: {e}")
+        return None
+
     def _call_nvidia(
         self,
         messages: list[dict],
@@ -271,13 +339,18 @@ class OpenRouterClient:
         temperature: float = DEFAULT_TEMPERATURE,
         response_format: Optional[dict] = None,
     ) -> str:
-        # 1. Groq LPU ultra-fast priority if available
+        # 1. Google Gemini 3.6 Flash direct tier (Primary)
+        gem_res = self._call_gemini(messages, max_tokens, temperature)
+        if gem_res:
+            return gem_res
+
+        # 2. Groq LPU ultra-fast priority if available
         if self.groq_key:
             groq_res = self._call_groq(messages, max_tokens, temperature)
             if groq_res:
                 return groq_res
 
-        # 2. OpenRouter pool
+        # 3. OpenRouter pool
         if not getattr(self, "_auth_failed", False):
             if model and not self._is_rate_limited(model):
                 result = self._call(model, messages, max_tokens, temperature, response_format)
@@ -300,7 +373,7 @@ class OpenRouterClient:
                     if getattr(self, "_auth_failed", False):
                         break
 
-        # 3. Fallback to NVIDIA API
+        # 4. Fallback to NVIDIA API
         if self.nvidia_api_key:
             logger.info("[NVIDIA API] Falling back to NVIDIA NIM...")
             nv_result = self._call_nvidia(messages, max_tokens, temperature, response_format)
@@ -308,8 +381,8 @@ class OpenRouterClient:
                 return nv_result
 
         raise RuntimeError(
-            "[OpenRouter/NVIDIA] All model providers failed or are rate-limited. "
-            "Please check your OpenRouter / NVIDIA API keys and network connection."
+            "[INDUS LLM Engine] All model providers failed or are unconfigured. "
+            "Please verify your Gemini API key in config/api_keys.json."
         )
 
 

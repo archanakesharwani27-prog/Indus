@@ -1,4 +1,4 @@
-﻿# Byte-compiled / optimized / DLL files
+# Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *.class
@@ -23,9 +23,8 @@ ENV/
 config/api_keys.json
 config/security_pin.hash
 memory/long_term.json
-memory/*.db
-memory/*.db-wal
-memory/*.db-shm
+memory/*.db*
+memory/*.sqlite*
 
 # Scratch & Temporary data
 scratch/

@@ -112,6 +112,41 @@ def install_app(
     if player:
         player.write_log(f"[Installer] Installing '{app_name}'...")
 
+    # 0. Mobile Game & Emulator Intelligence
+    MOBILE_GAMES = {
+        "free fire": "Free Fire",
+        "free fire max": "Free Fire MAX",
+        "bgmi": "BGMI (Battlegrounds Mobile India)",
+        "pubg mobile": "PUBG Mobile",
+        "clash of clans": "Clash of Clans",
+        "subway surfers": "Subway Surfers",
+        "candy crush": "Candy Crush Saga",
+        "temple run": "Temple Run",
+        "brawl stars": "Brawl Stars",
+    }
+    for mg_key, mg_name in MOBILE_GAMES.items():
+        if mg_key in clean_app:
+            # Check if BlueStacks or LDPlayer emulator is already installed
+            bluestacks_paths = [
+                Path(os.environ.get("ProgramFiles", r"C:\Program Files")) / "BlueStacks_nxt" / "HD-Player.exe",
+                Path(os.environ.get("ProgramFiles(x86)", r"C:\Program Files (x86)")) / "BlueStacks_nxt" / "HD-Player.exe",
+                Path(r"C:\LDPlayer\LDPlayer9\dnplayer.exe"),
+            ]
+            emulator_found = None
+            for ep in bluestacks_paths:
+                if ep.exists():
+                    emulator_found = ep
+                    break
+
+            if emulator_found:
+                try:
+                    subprocess.Popen([str(emulator_found)])
+                    return f"'{mg_name}' ek Android mobile game hai. Aapke PC par Android emulator ({emulator_found.stem}) launch kar diya hai, wahan se '{mg_name}' download kar sakte hain."
+                except Exception:
+                    pass
+
+            return f"'{mg_name}' ek Android mobile game hai jo direct Windows (.exe) nahi hota. Isko PC par khelne ke liye BlueStacks ya LDPlayer emulator install karna hoga. Kya main BlueStacks emulator install kar doon?"
+
     # 1. Check Python package (pip)
     if source == "pip" or clean_app.startswith("pip "):
         pkg = clean_app.replace("pip install", "").replace("pip ", "").strip()
@@ -158,13 +193,10 @@ def install_app(
                 player.write_log(f"[Installer] Running Winget for {app_name}...")
             res = subprocess.run(cmd, capture_output=True, text=True, timeout=300)
             stdout = res.stdout
-            if res.returncode == 0 or "Successfully installed" in stdout or "succeeded" in stdout.lower():
+            if (res.returncode == 0 and ("Successfully installed" in stdout or "succeeded" in stdout.lower())) or "Successfully installed" in stdout:
                 return f"'{app_name}' successfully install ho gaya!"
-            elif "No package found" in stdout or "No applicable update found" in stdout:
-                logger.warning(f"[Installer] Winget package not found for {app_name}, trying fallback...")
-            else:
-                if "Successfully installed" in stdout:
-                    return f"'{app_name}' successfully install ho gaya!"
+            elif "No package found" in stdout or "No applicable update found" in stdout or res.returncode != 0:
+                logger.warning(f"[Installer] Winget package not found or failed for {app_name}, trying fallback...")
         except Exception as e:
             logger.error(f"[Installer] Winget exception: {e}")
 

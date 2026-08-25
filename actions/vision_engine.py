@@ -40,11 +40,12 @@ CONFIG_PATH = BASE_DIR / "config" / "api_keys.json"
 CLICK_CONFIDENCE_THRESHOLD = 0.60
 
 GEMINI_VISION_CANDIDATES = [
-    # Verified real Gemini vision-capable models (2025-08)
-    "models/gemini-2.5-flash",
-    "models/gemini-2.0-flash",
-    "models/gemini-1.5-flash",
-    "models/gemini-1.5-pro",
+    "gemini-2.5-flash",
+    "gemini-2.5-flash-lite",
+    "gemini-3.5-flash",
+    "gemini-3.7-flash",
+    "gemini-3.6-flash",
+    "gemini-flash-latest",
 ]
 
 

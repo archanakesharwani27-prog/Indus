@@ -16,18 +16,26 @@ BASE_DIR         = get_base_dir()
 API_CONFIG_PATH  = BASE_DIR / "config" / "api_keys.json"
 PROJECTS_DIR     = Path.home() / "Desktop" / "JarvisProjects"
 MAX_FIX_ATTEMPTS = 5
-MODEL_PLANNER    = "gemini-2.5-flash"
-MODEL_WRITER     = "gemini-2.5-flash"
 
-def _get_api_key() -> str:
-    with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
-        return json.load(f)["gemini_api_key"]
-
-
-def _get_model(model_name: str):
-    import google.generativeai as genai
-    genai.configure(api_key=_get_api_key())
-    return genai.GenerativeModel(model_name)
+def _llm_chat(prompt: str, system: str = "") -> str:
+    """Multi-provider LLM call with automatic cascading fallback (Google GenAI -> OpenRouter -> Groq -> NVIDIA)."""
+    try:
+        from or_client import client
+        return client.chat(prompt, system=system or "You are an expert software developer. Return ONLY the requested output without conversational filler.", max_tokens=3500)
+    except Exception as e:
+        print(f"[DevAgent] or_client error: {e}, trying google.genai fallback...")
+        try:
+            from google import genai
+            with open(API_CONFIG_PATH, "r", encoding="utf-8") as f:
+                key = json.load(f)["gemini_api_key"]
+            gclient = genai.Client(api_key=key)
+            resp = gclient.models.generate_content(
+                model="gemini-2.0-flash",
+                contents=prompt,
+            )
+            return resp.text or ""
+        except Exception as e2:
+            raise RuntimeError(f"All LLM providers failed for dev_agent: {e2}")
 
 
 def _strip_fences(text: str) -> str:
@@ -97,8 +105,6 @@ class RateLimitError(Exception):
 
 
 def _plan_project(description: str, language: str) -> dict:
-    model = _get_model(MODEL_PLANNER)
-
     prompt = f"""You are a senior software architect. Create a minimal, complete file plan for this project.
 
 Language: {language}
@@ -135,11 +141,11 @@ Critical rules:
 JSON:"""
 
     try:
-        response = model.generate_content(prompt)
-        raw = _strip_fences(response.text)
+        response_text = _llm_chat(prompt)
+        raw = _strip_fences(response_text)
         return json.loads(raw)
     except json.JSONDecodeError as e:
-        raise ValueError(f"Planner returned invalid JSON: {e}\nRaw: {response.text[:300]}")
+        raise ValueError(f"Planner returned invalid JSON: {e}\nRaw: {response_text[:300]}")
     except Exception as e:
         if _is_rate_limit(e):
             raise RateLimitError(str(e))
@@ -153,8 +159,6 @@ def _write_file(
     project_dir: Path,
     already_written: dict[str, str],
 ) -> str:
-    model = _get_model(MODEL_WRITER)
-
     file_path = file_info["path"]
     file_desc = file_info.get("description", "")
     file_imports = file_info.get("imports", [])
@@ -214,8 +218,8 @@ General rules:
 Code for {file_path}:"""
 
     try:
-        response = model.generate_content(prompt)
-        code = _strip_fences(response.text)
+        response_text = _llm_chat(prompt)
+        code = _strip_fences(response_text)
 
         full_path = project_dir / file_path
         full_path.parent.mkdir(parents=True, exist_ok=True)
@@ -350,8 +354,6 @@ def _fix_files(
     entry_point: str,
 ) -> dict[str, str]:
 
-    model = _get_model(MODEL_PLANNER)
-
     error_file, error_line = _parse_traceback(error_output, list(file_codes.keys()))
     error_type = _classify_error(error_output)
 
@@ -412,8 +414,8 @@ Rules:
 Fixed code for {fix_path}:"""
 
         try:
-            response = model.generate_content(prompt)
-            fixed = _strip_fences(response.text)
+            response_text = _llm_chat(prompt)
+            fixed = _strip_fences(response_text)
 
             full_path = project_dir / fix_path
             full_path.parent.mkdir(parents=True, exist_ok=True)

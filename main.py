@@ -222,7 +222,11 @@ TOOL_DECLARATIONS = [
     },
     {
         "name": "web_search",
-        "description": "Searches the web for any information.",
+        "description": (
+            "Searches the web for recent internet articles or specific online queries. "
+            "DO NOT call this for basic general knowledge, definitions, math, or well-known facts "
+            "(e.g. who is PM, full forms like NASA/ISRO, capitals, translations) -- answer general knowledge directly."
+        ),
         "parameters": {
             "type": "OBJECT",
             "properties": {
@@ -838,15 +842,15 @@ TOOL_DECLARATIONS = [
     {
         "name": "deep_research",
         "description": (
-            "Real-time deep research engine (IRIS-style). Use when user asks about: "
-            "sports scores/standings (IPL, cricket, football), upcoming movie/game release dates, "
-            "AI model benchmarks, tech comparisons, or any live factual data. "
-            "Returns a concise 2-3 sentence spoken summary with key facts and numbers."
+            "Deep multi-source web research engine. Use ONLY when the user explicitly asks for research, "
+            "or asks for dynamic live web data like today's live sports scores/standings (IPL, cricket), "
+            "today's breaking news, recent product benchmarks, or upcoming unreleased movie/game release dates. "
+            "DO NOT call this for basic facts, general knowledge, or definitions that you already know -- answer those directly."
         ),
         "parameters": {
             "type": "OBJECT",
             "properties": {
-                "query":  {"type": "STRING", "description": "What to research (e.g. 'IPL 2025 standings', 'GTA 6 release date')"},
+                "query":  {"type": "STRING", "description": "What to research (e.g. 'IPL 2025 points table', 'GTA 6 PC release date')"},
                 "domain": {"type": "STRING", "description": "sports | cricket | ipl | football | movies | games | tech | ai | news | general (default: general)"}
             },
             "required": ["query"]
@@ -1503,6 +1507,7 @@ class JarvisLive:
 
         loop   = asyncio.get_event_loop()
         result = "Done."
+        wake_word_controller.touch()
 
         # Publish TOOL_STARTED -- visible in HUD event log
         event_bus.publish(E.TOOL_STARTED, source="execute_tool",
@@ -1638,6 +1643,7 @@ class JarvisLive:
                 self.speak_error(name, e)
         finally:
             cancellation_manager.clear_active_task()
+            wake_word_controller.touch()
             if not self.ui.muted and self.ui.state not in ("CANCELLING", "CANCELLED"):
                 self.ui.set_state("LISTENING")
 

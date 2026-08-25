@@ -6,6 +6,7 @@ import subprocess
 import platform
 import shutil
 import os
+import re
 import webbrowser
 from pathlib import Path
 
@@ -54,7 +55,12 @@ _APP_ALIASES = {
     "blender":            {"Windows": "blender",             "Darwin": "Blender",          "Linux": "blender"},
     "capcut":             {"Windows": "CapCut",              "Darwin": "CapCut",           "Linux": "capcut"},
     "postman":            {"Windows": "Postman",             "Darwin": "Postman",          "Linux": "postman"},
-    "figma":              {"Windows": "Figma",              "Darwin": "Figma",           "Linux": "figma"},
+    "wiztree":            {"Windows": "WizTree64.exe",          "Darwin": "WizTree",             "Linux": "baobab"},
+    "wizz tree":          {"Windows": "WizTree64.exe",          "Darwin": "WizTree",             "Linux": "baobab"},
+    "wiz tree":           {"Windows": "WizTree64.exe",          "Darwin": "WizTree",             "Linux": "baobab"},
+    "bluestacks":         {"Windows": "HD-Player.exe",          "Darwin": "BlueStacks",          "Linux": "anbox"},
+    "free fire":          {"Windows": "HD-Player.exe",          "Darwin": "BlueStacks",          "Linux": "anbox"},
+    "figma":              {"Windows": "Figma",                  "Darwin": "Figma",               "Linux": "figma"},
 }
 
 
@@ -149,11 +155,28 @@ def _launch_windows(app_name: str) -> bool:
         except Exception as e:
             print(f"[open_app] Directory open error: {e}")
 
+    # Administrative mode launch
+    is_admin = any(adm in app_name.lower() for adm in ["admin", "administrator", "administrative"])
+    clean_target = re.sub(r"\b(at\s+)?administr\w+(\s+mode)?\b", "", app_name, flags=re.IGNORECASE).strip()
+    target_to_run = clean_target or app_name
+
+    if is_admin:
+        try:
+            print(f"[open_app] Launching as Administrator: {target_to_run}")
+            ps_cmd = f"Start-Process '{target_to_run}' -Verb RunAs"
+            r = subprocess.run(["powershell", "-NoProfile", "-Command", ps_cmd], capture_output=True, text=True, timeout=5)
+            if r.returncode == 0:
+                time.sleep(0.8)
+                return True
+        except Exception as e:
+            print(f"[open_app] Admin launch exception: {e}")
+
     # Direct Windows protocol or executable launch (e.g. ms-settings:, calc.exe, notepad.exe, control, or app command)
     try:
-        r = subprocess.run(f'start "" "{app_name}"', shell=True, capture_output=True, timeout=2)
+        r = subprocess.run(f'start "" "{target_to_run}"', shell=True, capture_output=True, timeout=2)
         if r.returncode == 0:
             time.sleep(0.5)
+            return True
     except Exception:
         pass
 
@@ -162,9 +185,12 @@ def _launch_windows(app_name: str) -> bool:
         pyautogui.PAUSE = 0.05
         pyautogui.press("win")
         time.sleep(0.3)
-        pyautogui.write(app_name, interval=0.02)
+        pyautogui.write(target_to_run, interval=0.02)
         time.sleep(0.4)
-        pyautogui.press("enter")
+        if is_admin:
+            pyautogui.hotkey("ctrl", "shift", "enter")
+        else:
+            pyautogui.press("enter")
         time.sleep(0.8)
         return True
     except Exception as e:
