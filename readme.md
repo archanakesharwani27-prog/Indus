@@ -1,79 +1,234 @@
-﻿# 🤖 INDUS (Mark-XXXIX)
-### Autonomous Desktop AI Assistant & Military-Grade Cognitive Operating System
-**Created by Ansh Kesharwani**
+﻿<div align="center">
 
-[![Python 3.10+](https://img.shields.io/badge/Python-3.10%2B-blue.svg)](https://www.python.org/downloads/)
-[![PyQt6](https://img.shields.io/badge/GUI-PyQt6%2060fps-brightgreen.svg)](https://www.riverbankcomputing.com/software/pyqt/)
-[![Gemini 2.5 Live](https://img.shields.io/badge/AI-Gemini%202.5%20Live%20Native%20Audio-orange.svg)](https://ai.google.dev/)
-[![Tests Passing](https://img.shields.io/badge/Tests-87%2F87%20Passed%20(100%25)-green.svg)](tests/run_all_tests.py)
-[![Security Hardened](https://img.shields.io/badge/Security-Fail--Closed%204--Tier-red.svg)](core/security_engine.py)
+# ⚡ I.N.D.U.S. (Mark-XXXIX)
+### **Intelligent Neural Desktop Universal System**
+*Autonomous Military-Grade Desktop AI Assistant & Cognitive Operating System*
 
----
+[![Python Version](https://img.shields.io/badge/Python-3.10%20%7C%203.11%20%7C%203.12-3776AB?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![GUI](https://img.shields.io/badge/GUI-PyQt6%2060FPS%20HUD-41CD52?style=for-the-badge&logo=qt&logoColor=white)](https://www.riverbankcomputing.com/software/pyqt/)
+[![AI Engine](https://img.shields.io/badge/AI-Gemini%202.5%20Live%20Native%20Audio-FF6F00?style=for-the-badge&logo=google&logoColor=white)](https://ai.google.dev/)
+[![Security](https://img.shields.io/badge/Security-Fail--Closed%204--Tier-E53935?style=for-the-badge&logo=security&logoColor=white)](core/security_engine.py)
+[![Tests](https://img.shields.io/badge/Tests-87%2F87%20Passed%20(100%25)-00C853?style=for-the-badge&logo=githubactions&logoColor=white)](tests/run_all_tests.py)
+[![Status](https://img.shields.io/badge/Status-Production%20Ready-00E5FF?style=for-the-badge)](https://github.com/archanakesharwani27-prog/Indus)
 
-## ✨ Overview
-
-**INDUS** is an intelligent, female-voiced autonomous desktop AI assistant inspired by J.A.R.V.I.S. from Iron Man. It combines bidirectional real-time audio streaming, multimodal screen perception, computer vision UI grounding, Fail-Closed security, and persistent long-term SQLite memory into a unified desktop cognitive engine.
-
----
-
-## 🚀 Key Architectural Highlights
-
-* 🎙️ **Real-Time Voice Streaming**: Native bidirectional audio powered by Gemini 2.5 Live (16kHz input → 24kHz output) with sub-10ms interruption handling ("Stop", "Ruko").
-* 👁️ **Computer Vision & UI Grounding**: Multi-tier visual grounding cascade (Local OCR <15ms → Geometry template match → Gemini 2.5 Flash VLM) with ActionVerifier state verification.
-* 🛡️ **Fail-Closed 4-Tier Security Subsystem**: PBKDF2-HMAC salted PIN vault, AST python sandbox, action-target binding, and structured security audit logging.
-* 🧠 **Persistent SQLite WAL Memory**: Automatic background fact extraction, conversation recall, app habits, and preference enforcement with 6,000-char context window protection.
-* 🎨 **Hardware-Accelerated PyQt6 HUD**: 60fps holographic HUD with audio-reactive viseme lip sync, facial emotion state tracking, and floating info cards.
-* 🛠️ **Unified Tool Registry**: 39 tools registered under a canonical dispatch pipeline for Voice, Text, and Autonomous Agent tasks.
+<p align="center">
+  <b>Developed with ❤️ by Ansh Kesharwani</b><br>
+  <i>An autonomous desktop intelligence that can hear, see, speak, plan, and control your OS in real-time.</i>
+</p>
 
 ---
 
-## ⚡ Quick Start
+</div>
 
-### Option 1: One-Click Installer (Zero Python Setup)
-Download INDUS_Setup_2026.exe from the latest release, run it, and follow the on-screen Setup Wizard.
+## 🌌 System Overview
 
-### Option 2: Run from Source
+**INDUS (Mark-XXXIX)** is a next-generation desktop cognitive assistant engineered with full hardware-accelerated visual grounding, low-latency bidirectional voice streaming, and closed-loop task execution.
 
-1. **Clone the repository:**
-   `ash
-   git clone https://github.com/archanakesharwani27-prog/Indus.git
-   cd Indus
-   `
-
-2. **Automated Setup (Windows):**
-   `powershell
-   PowerShell -ExecutionPolicy Bypass -File install.ps1
-   `
-
-3. **Configure API Keys:**
-   Copy config/api_keys.example.json to config/api_keys.json and add your Gemini API key:
-   `json
-   {
-       "gemini_api_key": "YOUR_API_KEY_HERE"
-   }
-   `
-
-4. **Run Preflight Dependency Check:**
-   `ash
-   python scripts/preflight_check.py
-   `
-
-5. **Start INDUS:**
-   `ash
-   python main.py
-   `
+Unlike standard chatbot wrappers, **INDUS** operates as an autonomous agent directly inside your operating system:
+* **Sees** what is on your screen using OCR token extraction and Multimodal VLM grounding.
+* **Hears & Speaks** simultaneously using Gemini 2.5 Live Native WebSockets audio with sub-10ms interruption handling (*"Stop", "Ruko", "Cancel"*).
+* **Executes & Verifies** workflows across 39 system tools using state diffing and perceptual hashing.
+* **Remembers** everything in a persistent SQLite WAL database with automated fact extraction.
+* **Protects** your computer using a 4-tier Fail-Closed security gate and PBKDF2 PIN vault.
 
 ---
 
-## 🧪 Test Suite
+## 🏛️ Architecture & Data Flow
 
-Run the master test runner across all 11 test suites:
+`
+                              ┌─────────────────────────┐
+                              │     User Interaction    │
+                              │ (16kHz Audio / Keyboard)│
+                              └────────────┬────────────┘
+                                           │
+                                           ▼
+                              ┌─────────────────────────┐
+                              │  PyQt6 60fps HUD Avatar │
+                              │ (Gaze, Visemes, Emotion)│
+                              └────────────┬────────────┘
+                                           │
+                                           ▼
+                              ┌─────────────────────────┐
+                              │   Gemini 2.5 Live Audio │
+                              │ (Sub-10ms Barge-in Gate)│
+                              └────────────┬────────────┘
+                                           │
+                                           ▼
+    ┌────────────────────────────────────────────────────────────────────────┐
+    │                        CANONICAL TOOL REGISTRY                         │
+    │                      (39 Deep Automation Actions)                      │
+    └──────┬──────────────────┬──────────────────┬────────────────────┬──────┘
+           │                  │                  │                    │
+           ▼                  ▼                  ▼                    ▼
+    ┌──────────────┐   ┌──────────────┐   ┌──────────────┐    ┌──────────────┐
+    │    Vision    │   │  OS Control  │   │  Developer   │    │  Web/Media   │
+    │  & Grounding │   │  & Hardware  │   │   & Tasks    │    │  & Research  │
+    └──────┬───────┘   └──────┬───────┘   └──────┬───────┘    └──────┬───────┘
+           │                  │                  │                    │
+           └──────────────────┴─────────┬────────┴────────────────────┘
+                                        │
+                                        ▼
+                         ┌─────────────────────────────┐
+                         │ Fail-Closed Security Engine │
+                         │ (DESTRUCTIVE / HIGH / PIN)  │
+                         └──────────────┬──────────────┘
+                                        │
+                                        ▼
+                         ┌─────────────────────────────┐
+                         │       ActionVerifier        │
+                         │ (Screen Diff / State Check) │
+                         └──────────────┬──────────────┘
+                                        │
+                                        ▼
+                         ┌─────────────────────────────┐
+                         │   SQLite Long-Term Memory   │
+                         │ (WAL Mode / Fact Extractor) │
+                         └─────────────────────────────┘
+`
+
+---
+
+## 🔥 Key Subsystems & Features
+
+### 1. 🎙️ Real-Time Voice Pipeline
+* **Gemini 2.5 Flash Native Audio Preview**: Direct bidirectional 16kHz audio input and 24kHz audio output.
+* **Sub-10ms Barge-In Interruption**: Say *"Stop"*, *"Ruko"*, or *"Cancel"* mid-speech to immediately halt any ongoing task.
+* **Phoneme-to-Viseme Lip Sync**: Converts live spoken audio into real-time mouth shapes and facial animations.
+
+### 2. 👁️ Multi-Tier Computer Vision Engine
+* **Tier 1 (Fast OCR)**: Pytesseract token bounding-box matching in <15ms.
+* **Tier 2 (Template Match)**: Geometric and icon matching in <25ms.
+* **Tier 3 (Multimodal VLM)**: Gemini 2.5 Flash Visual Grounding for complex dynamic UIs.
+* **ActionVerifier**: Compares pre- and post-action screen snapshots using perceptual hashing to guarantee execution success.
+
+### 3. 🛡️ Fail-Closed Security Subsystem
+* **4-Tier Risk Matrix**:
+  - DESTRUCTIVE: Drive formatting, mass deletion, registry alterations (Requires PIN Vault auth).
+  - HIGH: Terminal execution, software installations, system settings changes.
+  - MEDIUM: File modifications, app control.
+  - LOW: Screen understanding, read-only search, reminders.
+* **Salted PBKDF2 Vault**: 3-attempt lockout gate for privileged commands.
+* **AST Python Sandbox**: Safe evaluation of dynamically generated scripts.
+* **Credential Redactor**: Automatically masks API keys and tokens in all audit logs.
+
+### 4. 🧠 Long-Term Memory & Habit Learning
+* **SQLite Database (WAL Mode)**: Thread-safe persistent storage for conversations, user identity, app habits, and autonomous rules.
+* **Async Fact Extraction**: Background worker detects preferences and habits automatically.
+* **Token Safe Injection**: Memory prompt bounded with a 6,000-character safety limit to prevent token overflows.
+
+---
+
+## 🛠️ Complete Tool Capability Matrix (39 Modules)
+
+| Category | Tools & Handlers | Description |
+|---|---|---|
+| **OS & Desktop** | open_app, desktop_control, computer_control, computer_settings | Control windows, click buttons, change system volume/brightness, launch apps |
+| **Vision & Screen** | screen_understand, ision_click, ision_type, ision_scroll, ision_engine | Ground UI coordinates, read text on screen, click anywhere visually |
+| **Web & Research** | deep_research, web_search, rowser_control, light_finder | Multi-source DuckDuckGo/Tavily research, browse web, compare flights |
+| **Media & Audio** | stream_content, youtube_video, ideo_editor, universal_ad_skipper | Stream movies, autonomous YouTube navigation, FFmpeg video editing, skip video ads |
+| **Developer Tools**| code_helper, dev_agent, git_controller, 	erminal_command, live_writer | Write code, run CLI commands, git version control, live desktop note generation |
+| **Hardware & IoT** | mobile_bridge, luetooth_control, smart_home | Android ADB wireless bridge (calls, SMS, battery), bluetooth devices, smart lights |
+| **System Security**| security_vault, security_protocols, system_radar | Manage PBKDF2 PIN, execute emergency protocols, monitor running processes |
+| **Shopping & Daily**| search_and_show_products, proceed_to_cart_and_checkout, eminder | Search e-commerce deals, automate checkout steps, set scheduled alarms |
+
+---
+
+## ⚡ Quick Start & Installation
+
+### 🚀 Option A: One-Click GUI Installer (No Python Needed)
+1. Download INDUS_Setup_2026.exe from the latest release.
+2. Double-click the installer, paste your Gemini API key (optional), and click **Install**.
+3. Launch INDUS directly from your Desktop shortcut!
+
+### 💻 Option B: Run from Source (Developers)
+
+#### 1. Clone the repository
+`ash
+git clone https://github.com/archanakesharwani27-prog/Indus.git
+cd Indus
+`
+
+#### 2. Run the automated dependency installer (Windows)
+`powershell
+PowerShell -ExecutionPolicy Bypass -File install.ps1
+`
+
+#### 3. Set up your API Keys
+Copy config/api_keys.example.json to config/api_keys.json:
+`json
+{
+    "gemini_api_key": "YOUR_GEMINI_API_KEY_HERE",
+    "openrouter_api_key": "",
+    "groq_api_key": ""
+}
+`
+
+#### 4. Run the preflight hardware & dependency check
+`ash
+python scripts/preflight_check.py
+`
+
+#### 5. Launch INDUS
+`ash
+python main.py
+`
+
+---
+
+## 🧪 Verification & Test Suite
+
+INDUS comes with a complete regression test suite verifying all 11 core subsystems:
+
 `ash
 python tests/run_all_tests.py
 `
-*(87 / 87 tests passing — 100% verified)*
+
+`	ext
+======================================================================
+  INDUS (INDUS) — MASTER PRODUCTION VERIFICATION RUNNER
+======================================================================
+Ran 87 tests in 152.477s
+
+  TOTAL TESTS RUN : 87
+  PASSED          : 87 / 87 (100.0%)
+  FAILURES        : 0
+  ERRORS          : 0
+  STATUS          : OK
+======================================================================
+`
 
 ---
 
-## 📜 License & Attribution
-Developed with ❤️ by **Ansh Kesharwani**.
+## 📁 Repository Structure
+
+`	ext
+INDUS/
+├── actions/             # 39 Canonical Action Modules (Vision, OS, ADB, Media, Research)
+├── agent/               # Closed-Loop Agent Planner, Error Handler, Task Model
+├── assets/              # Avatar Face Expressions (Happy, Angry, Thinking, Calm, etc.)
+├── config/              # Configuration & Device Profiles (API key templates)
+├── core/                # Security Engine, Tool Registry, Viseme Timeline, Event Bus
+├── docs/                # Architectural Documentation, Audits & Specifications
+├── memory/              # SQLite Database Engine, Fact Extraction & Habit Tracker
+├── scripts/             # Setup Wizard (installer.py), Preflight Checker (preflight_check.py)
+├── tests/               # 11 Unit & Integration Test Suites (87 Tests)
+├── indus.spec           # PyInstaller Specification for Standalone EXE
+├── install.ps1          # One-Click Dependency Installer
+├── main.py              # Application Entry Point & Gemini 2.5 Live Pipeline
+├── requirements.txt     # Pinned Python Dependencies
+└── ui.py                # Hardware-Accelerated PyQt6 Holographic HUD & Visualizer
+`
+
+---
+
+## 👤 Author & Credits
+
+* **Lead Architect & Developer:** **Ansh Kesharwani**
+* **Project Name:** Project INDUS (Mark-XXXIX)
+* **GitHub Repository:** [archanakesharwani27-prog/Indus](https://github.com/archanakesharwani27-prog/Indus)
+
+---
+
+<div align="center">
+  <sub>Built for the future of human-computer interaction. Powered by Google Gemini 2.5 & Advanced Agentic Intelligence.</sub>
+</div>
