@@ -169,33 +169,10 @@ class VisionManager:
     # ── Tier 1: Local OCR Extraction ─────────────────────────────────────────
 
     def extract_ocr(self, img: Image.Image) -> List[Dict[str, Any]]:
-        """Extract visible text tokens and bounding boxes using pytesseract."""
-        from actions.vision_engine import TESSERACT_EXE
-        if not TESSERACT_EXE:
-            return []
+        """Extract visible text tokens and bounding boxes using Windows Native winocr + Tesseract fallback."""
         try:
-            import pytesseract
-            pytesseract.pytesseract.tesseract_cmd = TESSERACT_EXE
-            data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
-
-            elements = []
-            n_boxes = len(data["text"])
-            for i in range(n_boxes):
-                text = str(data["text"][i]).strip()
-                conf = float(data["conf"][i]) if "conf" in data else 0.0
-                if text and conf > 30.0:
-                    x, y, w, h = data["left"][i], data["top"][i], data["width"][i], data["height"][i]
-                    elements.append({
-                        "text": text,
-                        "x": x,
-                        "y": y,
-                        "w": w,
-                        "h": h,
-                        "cx": x + w // 2,
-                        "cy": y + h // 2,
-                        "conf": conf / 100.0,
-                    })
-            return elements
+            from actions.vision_engine import extract_ocr_elements
+            return extract_ocr_elements(img)
         except Exception as e:
             logger.debug(f"[VisionManager] OCR error: {e}")
             return []
@@ -289,7 +266,11 @@ class VisionManager:
                             result_json = parsed
                             break
                     except Exception as model_err:
+                        err_str = str(model_err).lower()
                         logger.debug(f"[VisionManager] {model_name} grounding error: {model_err}")
+                        if "429" in err_str or "quota" in err_str or "resource_exhausted" in err_str:
+                            logger.info("[VisionManager] Quota exhausted -> immediate fallback.")
+                            break
             except Exception as e:
                 logger.warning(f"[VisionManager] Gemini direct vision grounding failed: {e}")
 

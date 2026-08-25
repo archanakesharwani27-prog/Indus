@@ -77,11 +77,15 @@ GROQ_API_URL   = "https://api.groq.com/openai/v1/chat/completions"
 GROQ_FAST_MODELS = ["llama-3.3-70b-versatile", "llama3-8b-8192", "gemma2-9b-it"]
 
 NVIDIA_API_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
-NVIDIA_MODELS: list[str] = [
+NVIDIA_TEXT_MODELS: list[str] = [
     "meta/llama-3.1-8b-instruct",
     "mistralai/mistral-large-2-instruct",
     "meta/llama-3.1-70b-instruct",
 ]
+NVIDIA_VISION_MODELS: list[str] = [
+    "meta/llama-3.2-11b-vision-instruct",
+]
+NVIDIA_MODELS = NVIDIA_TEXT_MODELS
 
 class OpenRouterClient:
 
@@ -204,7 +208,18 @@ class OpenRouterClient:
             "Content-Type":  "application/json",
         }
 
-        for model in NVIDIA_MODELS:
+        # Auto-detect multimodal vision messages
+        is_vision = False
+        for msg in messages:
+            content = msg.get("content")
+            if isinstance(content, list):
+                for item in content:
+                    if isinstance(item, dict) and "image_url" in item:
+                        is_vision = True
+                        break
+
+        models_to_try = NVIDIA_VISION_MODELS if is_vision else NVIDIA_TEXT_MODELS
+        for model in models_to_try:
             payload: dict = {
                 "model":       model,
                 "messages":    messages,

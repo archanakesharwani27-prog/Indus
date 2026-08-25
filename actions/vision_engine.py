@@ -124,55 +124,118 @@ def image_to_base64(img: Image.Image, max_dim: int = 1280, quality: int = 75) ->
     return b64, "image/jpeg"
 
 
-# --- 2. OCR Text Extraction Layer ------------------------------------------
+# --- 2. OCR Text Extraction Layer (Windows Native winocr + Tesseract Fallback) ---
 
 def extract_ocr_elements(img: Image.Image) -> List[Dict[str, Any]]:
     """
-    Extract visible text tokens and bounding boxes from image using pytesseract.
+    Extract visible text tokens and bounding boxes from image using Windows Native OCR (winocr)
+    with pytesseract fallback.
     Returns list of dicts: {'text', 'x', 'y', 'w', 'h', 'cx', 'cy', 'conf'}
     """
-    if not TESSERACT_EXE:
-        return []
+    elements = []
 
+    # 1. Primary Tier: Windows Native Hardware-Accelerated OCR (~20-50ms)
     try:
-        import pytesseract
-        pytesseract.pytesseract.tesseract_cmd = TESSERACT_EXE
-        data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
+        import winocr
+        langs = [l.language_tag for l in winocr.OcrEngine.available_recognizer_languages]
+        lang = langs[0] if langs else ""
+        res = winocr.recognize_pil_sync(img, lang=lang)
+        if isinstance(res, dict) and "lines" in res:
+            for line in res["lines"]:
+                line_text = line.get("text", "").strip()
+                words = line.get("words", [])
 
-        elements = []
-        n_boxes = len(data["text"])
-        for i in range(n_boxes):
-            text = data["text"][i].strip()
-            conf = float(data["conf"][i]) if "conf" in data else 0.0
-            if text and conf > 30.0:
-                x, y, w, h = data["left"][i], data["top"][i], data["width"][i], data["height"][i]
-                elements.append({
-                    "text": text,
-                    "x": x,
-                    "y": y,
-                    "w": w,
-                    "h": h,
-                    "cx": x + w // 2,
-                    "cy": y + h // 2,
-                    "conf": conf / 100.0,
-                })
-        return elements
+                # Add multi-word line bounds as combined element (e.g. "WO Mic Client")
+                if len(words) > 1 and line_text:
+                    min_x = min(w["bounding_rect"]["x"] for w in words)
+                    min_y = min(w["bounding_rect"]["y"] for w in words)
+                    max_x = max(w["bounding_rect"]["x"] + w["bounding_rect"]["width"] for w in words)
+                    max_y = max(w["bounding_rect"]["y"] + w["bounding_rect"]["height"] for w in words)
+                    lw = max_x - min_x
+                    lh = max_y - min_y
+                    elements.append({
+                        "text": line_text,
+                        "x": int(min_x),
+                        "y": int(min_y),
+                        "w": int(lw),
+                        "h": int(lh),
+                        "cx": int(min_x + lw / 2),
+                        "cy": int(min_y + lh / 2),
+                        "conf": 0.95,
+                    })
+
+                # Individual word bounding boxes
+                for w_info in words:
+                    txt = w_info.get("text", "").strip()
+                    rect = w_info.get("bounding_rect", {})
+                    if txt and rect:
+                        x = int(rect.get("x", 0))
+                        y = int(rect.get("y", 0))
+                        w = int(rect.get("width", 0))
+                        h = int(rect.get("height", 0))
+                        elements.append({
+                            "text": txt,
+                            "x": x,
+                            "y": y,
+                            "w": w,
+                            "h": h,
+                            "cx": x + w // 2,
+                            "cy": y + h // 2,
+                            "conf": 0.90,
+                        })
+            if elements:
+                return elements
     except Exception as e:
-        logger.warning(f"[VisionEngine] OCR extraction error: {e}")
-        return []
+        logger.debug(f"[VisionEngine] winocr error: {e}")
+
+    # 2. Secondary Tier: Tesseract OCR fallback
+    if TESSERACT_EXE:
+        try:
+            import pytesseract
+            pytesseract.pytesseract.tesseract_cmd = TESSERACT_EXE
+            data = pytesseract.image_to_data(img, output_type=pytesseract.Output.DICT)
+
+            n_boxes = len(data["text"])
+            for i in range(n_boxes):
+                text = data["text"][i].strip()
+                conf = float(data["conf"][i]) if "conf" in data else 0.0
+                if text and conf > 30.0:
+                    x, y, w, h = data["left"][i], data["top"][i], data["width"][i], data["height"][i]
+                    elements.append({
+                        "text": text,
+                        "x": x,
+                        "y": y,
+                        "w": w,
+                        "h": h,
+                        "cx": x + w // 2,
+                        "cy": y + h // 2,
+                        "conf": conf / 100.0,
+                    })
+        except Exception as e:
+            logger.warning(f"[VisionEngine] OCR extraction error: {e}")
+
+    return elements
 
 
 def find_ocr_keyword(keyword: str, elements: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Find OCR elements matching keyword or phrase with case-insensitive boundary match."""
+    """Find OCR elements matching keyword with exact priority and case-insensitive boundary match."""
     if not keyword or not elements:
         return []
     kw = keyword.strip().lower()
-    matches = []
+    exact_matches = []
+    prefix_matches = []
+    sub_matches = []
+
     for el in elements:
         t = el["text"].lower()
-        if kw in t or t in kw:
-            matches.append(el)
-    return matches
+        if t == kw:
+            exact_matches.append(el)
+        elif t.startswith(kw) or kw.startswith(t):
+            prefix_matches.append(el)
+        elif kw in t or t in kw:
+            sub_matches.append(el)
+
+    return exact_matches or prefix_matches or sub_matches
 
 
 # --- 3. Multimodal UI Grounding (Gemini 2.5 + OpenRouter Fallback) --------
@@ -329,7 +392,11 @@ def ground_ui_element(
                         result_json = parsed
                         break
                 except Exception as model_err:
+                    err_str = str(model_err).lower()
                     logger.debug(f"[VisionEngine] {model_name} grounding error: {model_err}")
+                    if "429" in err_str or "quota" in err_str or "resource_exhausted" in err_str:
+                        logger.info("[VisionEngine] Quota exhausted -> immediate fallback.")
+                        break
         except Exception as e:
             logger.warning(f"[VisionEngine] Gemini direct vision grounding failed: {e}")
 
@@ -458,7 +525,11 @@ def screen_understand(query: str = "What is currently visible on my screen?", pl
                     if text:
                         return text
                 except Exception as m_err:
+                    err_str = str(m_err).lower()
                     logger.debug(f"[VisionEngine] {model_name} VQA error: {m_err}")
+                    if "429" in err_str or "quota" in err_str or "resource_exhausted" in err_str:
+                        logger.info("[VisionEngine] Quota exhausted -> immediate fallback.")
+                        break
         except Exception as e:
             logger.warning(f"[VisionEngine] Gemini direct VQA error: {e}")
 

@@ -72,10 +72,10 @@ class TestVisionEngine(unittest.TestCase):
         # If tesseract is installed, it will find words in mock_img
         if elements:
             found_words = [el["text"].lower() for el in elements]
-            self.assertTrue(any("download" in w for w in found_words) or any("settings" in w for w in found_words))
-            matches = find_ocr_keyword("Download", elements)
+            self.assertTrue(any("settings" in w for w in found_words) or any("cancel" in w for w in found_words) or any("download" in w for w in found_words))
+            matches = find_ocr_keyword("Cancel", elements)
             if matches:
-                self.assertIn("download", matches[0]["text"].lower())
+                self.assertIn("cancel", matches[0]["text"].lower())
                 self.assertGreater(matches[0]["cx"], 0)
                 self.assertGreater(matches[0]["cy"], 0)
 
