@@ -28,7 +28,7 @@ BASE_DIR           = get_base_dir()
 API_CONFIG_PATH    = BASE_DIR / "config" / "api_keys.json"
 DESKTOP            = Path.home() / "Desktop"
 MAX_BUILD_ATTEMPTS = 3
-GEMINI_MODEL       = "gemini-2.5-flash"
+GEMINI_MODEL       = "gemini-3.6-flash"
 
 
 def _get_api_key() -> str:
@@ -40,16 +40,16 @@ def _get_api_key() -> str:
 
 
 GEMINI_CODING_MODELS = [
-    "models/gemini-3.6-flash",
-    "models/gemini-3.5-flash",
-    "models/gemini-flash-latest",
-    "models/gemini-2.5-flash",
-    "models/gemini-3.1-pro-preview",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-flash-latest",
 ]
 
 
 def _call_coding_model(prompt: str, system: str = "You are an expert software engineer.") -> str:
     """Multi-provider resilient coding model caller (Google GenAI Gemini 3.6 Flash -> Groq/OpenRouter fallback)."""
+    import concurrent.futures
     api_key = _get_api_key()
     if api_key:
         try:
@@ -59,15 +59,18 @@ def _call_coding_model(prompt: str, system: str = "You are an expert software en
             client = genai.Client(api_key=api_key, http_options={"api_version": "v1beta"})
             for model_name in GEMINI_CODING_MODELS:
                 try:
-                    resp = client.models.generate_content(
-                        model=model_name,
-                        contents=[prompt],
-                        config=types.GenerateContentConfig(
-                            system_instruction=system,
-                            temperature=0.2,
-                            max_output_tokens=3000,
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                        future = executor.submit(
+                            client.models.generate_content,
+                            model=model_name,
+                            contents=[prompt],
+                            config=types.GenerateContentConfig(
+                                system_instruction=system,
+                                temperature=0.2,
+                                max_output_tokens=3000,
+                            )
                         )
-                    )
+                        resp = future.result(timeout=4.0)
                     if resp and resp.text:
                         return resp.text.strip()
                 except Exception as m_err:
@@ -527,7 +530,7 @@ Be specific and actionable. If you see an error message, quote it exactly."""
         ]
 
         response = client.models.generate_content(
-            model="gemini-2.5-flash",
+            model=GEMINI_MODEL,
             contents=contents,
         )
 

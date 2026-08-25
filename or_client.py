@@ -66,9 +66,9 @@ VISION_MODELS: list[str] = [
 API_URL               = "https://openrouter.ai/api/v1/chat/completions"
 DEFAULT_MAX_TOKENS    = 4096
 DEFAULT_TEMPERATURE   = 0.7
-REQUEST_TIMEOUT       = 60   # seconds per request
-MAX_RETRIES_PER_MODEL = 2    # attempts before moving to next model
-RETRY_DELAY           = 2    # seconds between retries
+REQUEST_TIMEOUT       = 10   # seconds per request
+MAX_RETRIES_PER_MODEL = 1    # attempts before moving to next model
+RETRY_DELAY           = 1    # seconds between retries
 RATE_LIMIT_COOLDOWN   = 60   # seconds before retrying a rate-limited model
 _rate_limited: dict[str, float] = {}
 
@@ -78,8 +78,9 @@ GROQ_FAST_MODELS = ["llama-3.3-70b-versatile", "llama3-8b-8192", "gemma2-9b-it"]
 
 NVIDIA_API_URL = "https://integrate.api.nvidia.com/v1/chat/completions"
 NVIDIA_MODELS: list[str] = [
-    "meta/llama-3.3-70b-instruct",
-    "mistralai/mixtral-8x7b-instruct-v0.1",
+    "meta/llama-3.1-8b-instruct",
+    "mistralai/mistral-large-2-instruct",
+    "meta/llama-3.1-70b-instruct",
 ]
 
 class OpenRouterClient:
@@ -89,12 +90,13 @@ class OpenRouterClient:
         self.groq_key = _load_groq_key()
         self._headers = {
             "Authorization": f"Bearer {self.api_key}",
+            "HTTP-Referer":  "https://github.com/archanakesharwani27-prog/Indus",
+            "X-Title":       "INDUS Voice AI",
             "Content-Type":  "application/json",
-            "HTTP-Referer":  "https://github.com/indus",
-            "X-Title":       "INDUS",
         }
+        self.total_tokens_used = 0
 
-    def reload_keys(self):
+    def reload_keys(self) -> None:
         self.api_key, self.nvidia_api_key = _load_api_keys()
         self.groq_key = _load_groq_key()
         self._headers["Authorization"] = f"Bearer {self.api_key}"
@@ -138,30 +140,50 @@ class OpenRouterClient:
                                         img_bytes = base64.b64decode(b64)
                                         contents.append(types.Part.from_bytes(data=img_bytes, mime_type=mime))
 
+            import concurrent.futures
+
             config = types.GenerateContentConfig(
                 max_output_tokens=max_tokens,
                 temperature=temperature,
                 system_instruction=system_inst if system_inst else None,
             )
             for model_name in [
-                "gemini-2.5-flash",
-                "gemini-2.5-flash-lite",
-                "gemini-3.5-flash",
-                "gemini-3.7-flash",
                 "gemini-3.6-flash",
+                "gemini-3.5-flash",
+                "gemini-3.5-flash-lite",
                 "gemini-flash-latest",
             ]:
                 try:
-                    resp = gclient.models.generate_content(
-                        model=model_name,
-                        contents=contents,
-                        config=config,
-                    )
-                    if resp and resp.text:
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                        future = executor.submit(
+                            gclient.models.generate_content,
+                            model=model_name,
+                            contents=contents,
+                            config=config,
+                        )
+                        resp = future.result(timeout=4.0)
+
+                    extracted_text = ""
+                    try:
+                        extracted_text = resp.text or ""
+                    except Exception:
+                        pass
+                    if not extracted_text and resp and getattr(resp, "candidates", None):
+                        for cand in resp.candidates:
+                            if cand.content and cand.content.parts:
+                                for part in cand.content.parts:
+                                    if hasattr(part, "text") and part.text:
+                                        extracted_text += part.text
+
+                    if extracted_text.strip():
                         logger.info(f"[Gemini Direct] [OK] Success via {model_name}")
-                        return resp.text.strip()
+                        return extracted_text.strip()
                 except Exception as me:
+                    err_str = str(me).lower()
                     logger.warning(f"[Gemini Direct] {model_name} failed: {me}")
+                    if "429" in err_str or "quota" in err_str or "resource_exhausted" in err_str:
+                        logger.info("[Gemini Direct] Quota exhausted -> immediate fallback.")
+                        break
                     continue
         except Exception as e:
             logger.warning(f"[Gemini Direct] global error: {e}")
@@ -198,7 +220,7 @@ class OpenRouterClient:
                     NVIDIA_API_URL,
                     headers=headers,
                     json=payload,
-                    timeout=15,
+                    timeout=8,
                 )
                 if resp.status_code == 200:
                     data = resp.json()

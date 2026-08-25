@@ -47,10 +47,13 @@ def _generate_with_gemini(prompt: str, image_path: Path = None) -> str:
             mime = "image/png" if ext == ".png" else ("image/webp" if ext == ".webp" else "image/jpeg")
             contents.append(types.Part.from_bytes(data=raw_bytes, mime_type=mime))
 
-        for m in ["models/gemini-2.5-flash", "models/gemini-2.0-flash", "models/gemini-1.5-flash", "gemini-2.5-flash"]:
+        import concurrent.futures
+        for m in ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-flash-latest"]:
             try:
-                r = client.models.generate_content(model=m, contents=contents)
-                if r.text:
+                with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                    future = executor.submit(client.models.generate_content, model=m, contents=contents)
+                    r = future.result(timeout=4.0)
+                if r and r.text:
                     return r.text.strip()
             except Exception:
                 continue

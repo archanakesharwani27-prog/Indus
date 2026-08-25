@@ -19,24 +19,34 @@ def _get_api_key() -> str:
 
 
 def _gemini_search(query: str) -> str:
+    import concurrent.futures
     from google import genai
 
-    client   = genai.Client(api_key=_get_api_key())
-    response = client.models.generate_content(
-        model="gemini-2.5-flash",
-        contents=query,
-        config={"tools": [{"google_search": {}}]},
-    )
+    client = genai.Client(api_key=_get_api_key())
+    for model_name in ["gemini-3.6-flash", "gemini-3.5-flash", "gemini-3.5-flash-lite", "gemini-flash-latest"]:
+        try:
+            with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                future = executor.submit(
+                    client.models.generate_content,
+                    model=model_name,
+                    contents=query,
+                    config={"tools": [{"google_search": {}}]},
+                )
+                response = future.result(timeout=4.0)
 
-    text = ""
-    for part in response.candidates[0].content.parts:
-        if hasattr(part, "text") and part.text:
-            text += part.text
+            text = ""
+            if response and response.candidates:
+                for part in response.candidates[0].content.parts:
+                    if hasattr(part, "text") and part.text:
+                        text += part.text
 
-    text = text.strip()
-    if not text:
-        raise ValueError("Gemini returned an empty response.")
-    return text
+            text = text.strip()
+            if text:
+                return text
+        except Exception:
+            continue
+
+    raise ValueError("Gemini returned empty response or timed out.")
 
 
 def _ddg_search(query: str, max_results: int = 6) -> list[dict]:

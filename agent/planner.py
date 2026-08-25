@@ -66,11 +66,10 @@ Return ONLY valid JSON matching this schema:
 """
 
 CANDIDATE_MODELS = [
-    "models/gemini-2.5-flash",
-    "models/gemini-2.0-flash",
-    "models/gemini-1.5-flash",
-    "gemini-2.5-flash",
-    "gemini-2.0-flash",
+    "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-flash-latest",
 ]
 
 
@@ -109,6 +108,8 @@ def validate_plan_schema(plan: dict) -> List[TaskStep]:
                 tool = "web_search"
             elif "click" in tool or "button" in tool:
                 tool = "vision_click"
+            elif "write" in tool or "code" in tool or "note" in tool:
+                tool = "live_writer"
             elif "app" in tool or "open" in tool:
                 tool = "open_app"
             else:
@@ -155,7 +156,11 @@ def _match_deterministic_pattern(goal: str) -> Optional[List[TaskStep]]:
         song = re.sub(r"^(play|chalao|baja|song|gaana)\s*", "", g_lower).strip()
         return [TaskStep(step_id=1, tool="youtube_video", description=f"Play {song or goal}", parameters={"action": "play", "query": song or goal})]
 
-    # 4. App / Folder opening
+    # 4. Live Code / Notes Writer (HTML, Python, Sudoku, Game, Code, Notes)
+    if any(k in g_lower for k in ["code likho", "likho", "design kro", "design karo", "html page", "webpage", "sudoku", "game ka code", "notes banao", "document banao"]):
+        return [TaskStep(step_id=1, tool="live_writer", description=goal, parameters={"topic": goal, "subject": goal, "file_type": "auto"})]
+
+    # 5. App / Folder opening
     if g_lower.startswith("open ") or g_lower.startswith("kholo ") or g_lower.endswith(" kholo"):
         target = re.sub(r"^(open|kholo)\s*|\s*kholo$", "", g_lower).strip()
         if target:
@@ -188,22 +193,26 @@ def create_agent_plan(goal: str, context: str = "") -> List[TaskStep]:
     api_key = _get_api_key()
     raw_json_text = ""
 
-    # Try Google GenAI Client
+    # Try Google GenAI Client with strict 4s timeout
     if api_key:
+        import concurrent.futures
         try:
             from google import genai
             client = genai.Client(api_key=api_key, http_options={"api_version": "v1beta"})
             for model_name in CANDIDATE_MODELS:
                 try:
-                    resp = client.models.generate_content(
-                        model=model_name,
-                        contents=full_prompt,
-                        config={
-                            "system_instruction": PLANNER_SYSTEM_PROMPT,
-                            "temperature": 0.1,
-                            "response_mime_type": "application/json",
-                        },
-                    )
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                        future = executor.submit(
+                            client.models.generate_content,
+                            model=model_name,
+                            contents=full_prompt,
+                            config={
+                                "system_instruction": PLANNER_SYSTEM_PROMPT,
+                                "temperature": 0.1,
+                                "response_mime_type": "application/json",
+                            },
+                        )
+                        resp = future.result(timeout=4.0)
                     raw_json_text = resp.text.strip()
                     if raw_json_text:
                         break
