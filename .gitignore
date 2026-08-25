@@ -1,0 +1,41 @@
+﻿# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*.class
+*.pyc
+
+# Distribution / packaging / binaries
+build/
+dist/
+*.egg-info/
+*.zip
+*.exe
+*.pkg
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Configuration & Private Keys (CRITICAL SECURITY)
+config/api_keys.json
+config/security_pin.hash
+memory/long_term.json
+memory/*.db
+memory/*.db-wal
+memory/*.db-shm
+
+# Scratch & Temporary data
+scratch/
+scratch_*
+*.tmp
+*.log
+logs/
+
+# IDE & OS files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

@@ -1,0 +1,42 @@
+{
+  "devices": {
+    "bedroom_light": {
+      "name": "Bedroom Light",
+      "type": "light",
+      "protocol": "http",
+      "ip": "192.168.1.101",
+      "state": "on",
+      "brightness": 75,
+      "color": "warm_white"
+    },
+    "desk_lamp": {
+      "name": "Desk Lamp",
+      "type": "light",
+      "protocol": "http",
+      "ip": "192.168.1.102",
+      "state": "off",
+      "brightness": 100,
+      "color": "daylight"
+    },
+    "main_fan": {
+      "name": "Ceiling Fan",
+      "type": "fan",
+      "protocol": "http",
+      "ip": "192.168.1.103",
+      "state": "off",
+      "speed": 3
+    },
+    "ac": {
+      "name": "Air Conditioner",
+      "type": "climate",
+      "protocol": "homeassistant",
+      "entity_id": "climate.living_room_ac",
+      "state": "on",
+      "temperature": 22
+    }
+  },
+  "home_assistant": {
+    "url": "http://homeassistant.local:8123",
+    "token": ""
+  }
+}
