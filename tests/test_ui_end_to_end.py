@@ -105,7 +105,9 @@ class TestUIEndToEnd(unittest.TestCase):
     def test_06_screen_capture_and_grounding_safety(self):
         """Test MSS screen capture and ambiguous target rejection."""
         from actions.vision_engine import capture_screen, ground_ui_element
+        from unittest.mock import patch, MagicMock
         from PIL import Image
+        import json
 
         img, w, h = capture_screen()
         self.assertGreater(w, 0)
@@ -113,9 +115,15 @@ class TestUIEndToEnd(unittest.TestCase):
 
         # Ambiguous/non-existent button test
         blank = Image.new("RGB", (400, 300), (0, 0, 0))
-        res = ground_ui_element("quantum_hyperdrive_button", img=blank)
-        self.assertFalse(res.get("found", False))
-        self.assertLess(res.get("confidence", 1.0), 0.50)
+        mock_resp = {"found": False, "confidence": 0.0, "description": "Element not found"}
+        with patch("actions.vision_engine._get_api_key", return_value="test_key"):
+            with patch("google.genai.Client") as mock_client:
+                mock_gen = MagicMock()
+                mock_gen.models.generate_content.return_value = MagicMock(text=json.dumps(mock_resp))
+                mock_client.return_value = mock_gen
+                res = ground_ui_element("quantum_hyperdrive_button", img=blank)
+                self.assertFalse(res.get("found", False))
+                self.assertLess(res.get("confidence", 1.0), 0.50)
 
     def test_07_memory_persistence_across_cold_restart(self):
         """Test SQLite fact persistence across cold database queries."""

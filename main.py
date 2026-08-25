@@ -951,15 +951,15 @@ TOOL_DECLARATIONS = [
     {
         "name": "vision_click",
         "description": (
-            "Locate and safely click a UI target on screen using visual grounding and ActionVerifier verification. "
-            "Use when user says: 'click download button', 'click the blue button', 'click settings icon'. "
-            "Guards against low-confidence and ambiguous targets, verifies visual state change after click."
+            "Locate and safely click a UI target or sequential chain of targets on screen using visual grounding. "
+            "Supports single targets ('download button') and multi-step chains ('connection -> connect -> connect' or 'connection pr click kro fir connect pr'). "
+            "Automatically executes each step in sequence with screen re-capture."
         ),
         "parameters": {
             "type": "OBJECT",
             "properties": {
-                "target":  {"type": "STRING", "description": "Name or visual description of the button, tab, link, or element to click"},
-                "context": {"type": "STRING", "description": "Optional contextual clue (e.g. 'in the header', 'blue submit button')"}
+                "target":  {"type": "STRING", "description": "Target button/menu name or arrow-separated sequence (e.g. 'connection -> connect -> connect')"},
+                "context": {"type": "STRING", "description": "Optional contextual clue (e.g. 'in the header', 'WO Mic Client window')"}
             },
             "required": ["target"]
         }

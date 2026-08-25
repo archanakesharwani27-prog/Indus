@@ -61,6 +61,11 @@ _APP_ALIASES = {
     "bluestacks":         {"Windows": "HD-Player.exe",          "Darwin": "BlueStacks",          "Linux": "anbox"},
     "free fire":          {"Windows": "HD-Player.exe",          "Darwin": "BlueStacks",          "Linux": "anbox"},
     "figma":              {"Windows": "Figma",                  "Darwin": "Figma",               "Linux": "figma"},
+    "womic":              {"Windows": "WOMicClient.exe",        "Darwin": "WOMicClient",          "Linux": "womic"},
+    "wo mic":             {"Windows": "WOMicClient.exe",        "Darwin": "WOMicClient",          "Linux": "womic"},
+    "wo mic client":      {"Windows": "WOMicClient.exe",        "Darwin": "WOMicClient",          "Linux": "womic"},
+    "wc mic":             {"Windows": "WOMicClient.exe",        "Darwin": "WOMicClient",          "Linux": "womic"},
+    "wc mic client":      {"Windows": "WOMicClient.exe",        "Darwin": "WOMicClient",          "Linux": "womic"},
 }
 
 

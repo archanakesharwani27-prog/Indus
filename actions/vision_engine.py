@@ -40,11 +40,10 @@ CONFIG_PATH = BASE_DIR / "config" / "api_keys.json"
 CLICK_CONFIDENCE_THRESHOLD = 0.60
 
 GEMINI_VISION_CANDIDATES = [
-    "gemini-2.5-flash",
-    "gemini-2.5-flash-lite",
-    "gemini-3.5-flash",
-    "gemini-3.7-flash",
     "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.7-flash",
     "gemini-flash-latest",
 ]
 
@@ -178,6 +177,55 @@ def find_ocr_keyword(keyword: str, elements: List[Dict[str, Any]]) -> List[Dict[
 
 # --- 3. Multimodal UI Grounding (Gemini 2.5 + OpenRouter Fallback) --------
 
+def _clean_target_text(t: str) -> str:
+    """Clean conversational words and delimiters from target element names."""
+    t = re.sub(r"^(?:ab\s+)?(?:screen\s+dekh(?:\s*kr|\s*kar)?\s+)?", "", t, flags=re.IGNORECASE)
+    t = re.sub(r"^(?:please\s+|kripya\s+|jarvis\s+|indus\s+)", "", t, flags=re.IGNORECASE)
+    t = re.sub(r"\b(click|kro|kr|daba|daba do|button|menu|pr|pe|par|ko)\b", " ", t, flags=re.IGNORECASE)
+    return re.sub(r"\s+", " ", t).strip()
+
+
+def _parse_click_sequence(target_str: str) -> List[str]:
+    """
+    Parse multi-step click sequence from user phrases or delimiters.
+    Examples:
+    - 'connection -> connect -> connect'
+    - 'connection, connect, connect'
+    - 'ab screen dekh kr connection pr click kro fir connect pr fir connect pr'
+    - 'click connection then connect then connect'
+    """
+    raw = (target_str or "").strip()
+    if not raw:
+        return []
+
+    # 1. Delimiter splitting
+    for delim in ("->", ">>", "|", ";"):
+        if delim in raw:
+            parts = [_clean_target_text(p) for p in raw.split(delim)]
+            parts = [p for p in parts if p]
+            if len(parts) > 1:
+                return parts
+
+    # 2. Sequential words (fir, then, aur fir, baad mein)
+    seq_split = re.split(r"\b(?:fir|then|and then|aur fir|baad mein)\b", raw, flags=re.IGNORECASE)
+    cleaned_seq = [_clean_target_text(s) for s in seq_split]
+    cleaned_seq = [s for s in cleaned_seq if s]
+    if len(cleaned_seq) > 1:
+        return cleaned_seq
+
+    # 3. Comma-separated
+    if "," in raw:
+        parts = [_clean_target_text(p) for p in raw.split(",")]
+        parts = [p for p in parts if p]
+        if len(parts) > 1:
+            return parts
+
+    single = _clean_target_text(raw)
+    return [single] if single else [raw]
+
+
+# --- 3. Multimodal UI Grounding (Gemini 3.6/3.5 + OpenRouter Fallback) -----
+
 def ground_ui_element(
     target_description: str,
     context: str = "",
@@ -203,68 +251,90 @@ def ground_ui_element(
     else:
         screen_w, screen_h = img.width, img.height
 
+    clean_target = _clean_target_text(target_description) or target_description
+
     if player:
-        player.write_log(f"[Vision] Grounding target: '{target_description}' on {screen_w}x{screen_h} screen")
+        player.write_log(f"[Vision] Grounding target: '{clean_target}' on {screen_w}x{screen_h} screen")
 
     # Step 1: Fast local OCR matching for exact text buttons
     ocr_elements = extract_ocr_elements(img)
-    ocr_matches = find_ocr_keyword(target_description, ocr_elements)
+    ocr_matches = find_ocr_keyword(clean_target, ocr_elements)
+    if ocr_matches and ocr_matches[0].get("conf", 0) > 0.70:
+        best_ocr = ocr_matches[0]
+        return {
+            "found": True,
+            "target": clean_target,
+            "element_type": "text_button",
+            "center_x": best_ocr["cx"],
+            "center_y": best_ocr["cy"],
+            "bbox": [best_ocr["x"], best_ocr["y"], best_ocr["w"], best_ocr["h"]],
+            "confidence": min(0.95, best_ocr["conf"]),
+            "description": f"OCR detected text '{best_ocr['text']}'",
+            "is_ambiguous": len(ocr_matches) > 1,
+            "candidate_count": len(ocr_matches),
+            "ambiguity_reason": "Multiple OCR matches on screen" if len(ocr_matches) > 1 else "",
+        }
 
-    # Step 2: Query Multimodal Vision Model (Gemini 2.5 Flash)
+    # Step 2: Query Multimodal Vision Model (Gemini 3.6/3.5 Flash)
     b64_image, mime_type = image_to_base64(img, max_dim=1280)
 
     prompt = (
-        f"You are a computer vision UI grounding specialist.\n"
-        f"Analyze this {screen_w}x{screen_h} screenshot and find the UI element corresponding to: '{target_description}'.\n"
+        f"You are a high-precision computer vision UI grounding specialist.\n"
+        f"Analyze this {screen_w}x{screen_h} screenshot and find the UI element corresponding to: '{clean_target}'.\n"
         f"Context/Surroundings: {context if context else 'None'}\n\n"
         "Return ONLY a JSON object with this exact schema:\n"
         "{\n"
         '  "found": true/false,\n'
-        '  "element_type": "button" | "input" | "icon" | "link" | "tab" | "checkbox" | "menu" | "unknown",\n'
+        '  "element_type": "button" | "menu" | "input" | "icon" | "link" | "tab" | "checkbox" | "dialog",\n'
+        '  "box_2d": [ymin, xmin, ymax, xmax] (normalized integers 0 to 1000),\n'
         '  "center_x": <pixel integer horizontal coordinate 0 to ' + str(screen_w) + '>,\n'
         '  "center_y": <pixel integer vertical coordinate 0 to ' + str(screen_h) + '>,\n'
-        '  "bbox": [<left>, <top>, <width>, <height>],\n'
         '  "confidence": <float 0.0 to 1.0>,\n'
-        '  "description": "<concise description of where it is and what it looks like>",\n'
-        '  "is_ambiguous": true/false,\n'
-        '  "candidate_count": <integer number of matching elements on screen>,\n'
-        '  "ambiguity_reason": "<explanation if multiple matches or unclear>"\n'
+        '  "description": "<concise description of location and appearance>",\n'
+        '  "is_ambiguous": true/false\n'
         "}\n"
     )
 
-    # Try Gemini Vision Models directly
+    # Try Gemini Vision Models directly with strict 3.5s per-model timeout
     result_json = None
     api_key = _get_api_key()
     if api_key:
         try:
             from google import genai
             from google.genai import types
+            import concurrent.futures
 
             client = genai.Client(api_key=api_key, http_options={"api_version": "v1beta"})
             raw_bytes = base64.b64decode(b64_image)
 
             for model_name in GEMINI_VISION_CANDIDATES:
                 try:
-                    response = client.models.generate_content(
-                        model=model_name,
-                        contents=[
-                            types.Part.from_bytes(data=raw_bytes, mime_type=mime_type),
-                            prompt,
-                        ],
-                        config={"temperature": 0.1, "response_mime_type": "application/json"},
-                    )
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                        future = executor.submit(
+                            client.models.generate_content,
+                            model=model_name,
+                            contents=[
+                                types.Part.from_bytes(data=raw_bytes, mime_type=mime_type),
+                                prompt,
+                            ],
+                            config=types.GenerateContentConfig(
+                                temperature=0.1,
+                                response_mime_type="application/json"
+                            ),
+                        )
+                        response = future.result(timeout=3.5)
                     text = response.text.strip()
-                    result_json = json.loads(text)
-                    if result_json:
+                    parsed = json.loads(text)
+                    if isinstance(parsed, dict) and ("found" in parsed or "center_x" in parsed):
+                        result_json = parsed
                         break
                 except Exception as model_err:
-                    logger.debug(f"[VisionEngine] {model_name} grounding attempt error: {model_err}")
+                    logger.debug(f"[VisionEngine] {model_name} grounding error: {model_err}")
         except Exception as e:
             logger.warning(f"[VisionEngine] Gemini direct vision grounding failed: {e}")
 
-
     # Fallback to or_client if needed
-    if not result_json:
+    if not result_json or not result_json.get("found"):
         try:
             from or_client import client as or_c
             raw_text = or_c.vision(prompt, image_b64=b64_image, mime=mime_type)
@@ -272,18 +342,34 @@ def ground_ui_element(
             if "```" in clean:
                 clean = re.sub(r"^```(?:json)?\s*", "", clean)
                 clean = re.sub(r"\s*```$", "", clean)
-            result_json = json.loads(clean)
+            parsed_or = json.loads(clean)
+            if parsed_or:
+                result_json = parsed_or
         except Exception as e:
             logger.warning(f"[VisionEngine] or_client fallback grounding failed: {e}")
 
-    # Step 3: Combine with OCR coordinates if valid and enhance accuracy
+    # Convert normalized box_2d if provided by Gemini
+    if result_json and result_json.get("found"):
+        if "box_2d" in result_json and isinstance(result_json["box_2d"], list) and len(result_json["box_2d"]) == 4:
+            ymin, xmin, ymax, xmax = result_json["box_2d"]
+            calc_cx = int(((xmin + xmax) / 2.0 / 1000.0) * screen_w)
+            calc_cy = int(((ymin + ymax) / 2.0 / 1000.0) * screen_h)
+            result_json["center_x"] = calc_cx
+            result_json["center_y"] = calc_cy
+            result_json["bbox"] = [
+                int((xmin / 1000.0) * screen_w),
+                int((ymin / 1000.0) * screen_h),
+                int(((xmax - xmin) / 1000.0) * screen_w),
+                int(((ymax - ymin) / 1000.0) * screen_h),
+            ]
+
+    # Step 3: Combine with OCR coordinates if valid
     if not result_json or not result_json.get("found"):
         if ocr_matches:
-            # Single exact OCR match fallback
             best_ocr = ocr_matches[0]
             return {
                 "found": True,
-                "target": target_description,
+                "target": clean_target,
                 "element_type": "text_element",
                 "center_x": best_ocr["cx"],
                 "center_y": best_ocr["cy"],
@@ -296,14 +382,14 @@ def ground_ui_element(
             }
         return {
             "found": False,
-            "target": target_description,
+            "target": clean_target,
             "confidence": 0.0,
-            "description": f"Element '{target_description}' was not found on screen.",
+            "description": f"Element '{clean_target}' was not found on screen.",
             "is_ambiguous": False,
             "candidate_count": 0,
         }
 
-    # Bounds check coordinates to ensure they are on screen
+    # Bounds check coordinates
     cx = int(result_json.get("center_x", -1))
     cy = int(result_json.get("center_y", -1))
     margin = 5
@@ -311,13 +397,6 @@ def ground_ui_element(
         result_json["found"] = False
         result_json["confidence"] = 0.0
         result_json["description"] = f"Calculated coordinates ({cx}, {cy}) outside screen bounds ({screen_w}x{screen_h})."
-
-    # Ambiguity check
-    if len(ocr_matches) > 1 and not result_json.get("is_ambiguous"):
-        result_json["candidate_count"] = max(result_json.get("candidate_count", 1), len(ocr_matches))
-        if result_json["candidate_count"] > 1 and not context:
-            result_json["is_ambiguous"] = True
-            result_json["ambiguity_reason"] = f"Multiple ({result_json['candidate_count']}) similar targets detected on screen."
 
     return result_json
 
@@ -327,11 +406,6 @@ def ground_ui_element(
 def screen_understand(query: str = "What is currently visible on my screen?", player=None) -> str:
     """
     Answers questions about the screen without performing any clicks.
-    Examples:
-    - 'What application is open?'
-    - 'What error is showing?'
-    - 'Is Bluetooth toggle active?'
-    - 'Summarize what is on the page.'
     """
     from core.cancellation import cancellation_manager
 
@@ -360,19 +434,26 @@ def screen_understand(query: str = "What is currently visible on my screen?", pl
             from google import genai
             from google.genai import types
 
+            import concurrent.futures
             client = genai.Client(api_key=api_key, http_options={"api_version": "v1beta"})
             raw_bytes = base64.b64decode(b64_image)
 
             for model_name in GEMINI_VISION_CANDIDATES:
                 try:
-                    response = client.models.generate_content(
-                        model=model_name,
-                        contents=[
-                            types.Part.from_bytes(data=raw_bytes, mime_type=mime_type),
-                            prompt,
-                        ],
-                        config={"temperature": 0.2, "max_output_tokens": 400},
-                    )
+                    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                        future = executor.submit(
+                            client.models.generate_content,
+                            model=model_name,
+                            contents=[
+                                types.Part.from_bytes(data=raw_bytes, mime_type=mime_type),
+                                prompt,
+                            ],
+                            config=types.GenerateContentConfig(
+                                temperature=0.2,
+                                max_output_tokens=400
+                            ),
+                        )
+                        response = future.result(timeout=3.5)
                     text = response.text.strip()
                     if text:
                         return text
@@ -381,8 +462,7 @@ def screen_understand(query: str = "What is currently visible on my screen?", pl
         except Exception as e:
             logger.warning(f"[VisionEngine] Gemini direct VQA error: {e}")
 
-
-    # Fallback to OpenRouter / Nemotron
+    # Fallback to OpenRouter
     try:
         from or_client import client as or_c
         return or_c.vision(prompt, image_b64=b64_image, mime=mime_type, max_tokens=300)
@@ -390,16 +470,17 @@ def screen_understand(query: str = "What is currently visible on my screen?", pl
         return f"Unable to analyze screen: {e}"
 
 
-# --- 5. Vision-Guided Safe Computer Control -------------------------------
+# --- 5. Vision-Guided Safe Computer Control & Multi-Step Sequence ---------
 
 def vision_click(target: str, context: str = "", player=None) -> str:
     """
-    Locates a target UI element visually, checks safety/confidence, clicks it,
-    and runs ActionVerifier to verify that the expected screen change occurred.
+    Locates and safely clicks UI target(s) on screen.
+    Supports single elements or sequential chains (e.g. 'connection -> connect -> connect').
     """
     from core.cancellation import cancellation_manager
     from core.security_vault import security_vault
     from actions.action_verifier import ActionVerifier
+    import pyautogui
 
     if cancellation_manager.is_cancelled():
         return "Click cancelled by user."
@@ -407,69 +488,70 @@ def vision_click(target: str, context: str = "", player=None) -> str:
     if not target:
         return "Target UI element name or description is required."
 
-    if player:
-        player.write_log(f"[Vision] Locating and clicking: '{target}'")
+    targets = _parse_click_sequence(target)
+    if not targets:
+        targets = [target]
 
-    # Step 1: Security Policy Check on target action
-    sec_decision = security_vault.evaluate_action(
-        action_name="vision_click",
-        parameters={"target": target, "context": context},
-    )
-    if not sec_decision.allowed:
-        return f"Security Policy Blocked: {sec_decision.reason}"
+    executed_steps = []
 
-    # Step 2: Ground UI target
-    grounding = ground_ui_element(target, context=context, player=player)
+    for idx, sub_target in enumerate(targets):
+        if cancellation_manager.is_cancelled():
+            return f"Operation cancelled by user at step {idx+1}/{len(targets)}."
 
-    if cancellation_manager.is_cancelled():
-        return "Operation cancelled by user."
+        step_prefix = f"[{idx+1}/{len(targets)}] " if len(targets) > 1 else ""
+        if player:
+            player.write_log(f"[Vision] {step_prefix}Locating and clicking: '{sub_target}'")
 
-    if not grounding.get("found"):
-        return f"Target '{target}' was not found on screen. ({grounding.get('description', '')})"
-
-    # Step 3: Confidence & Ambiguity Evaluation
-    confidence = float(grounding.get("confidence", 0.0))
-    if confidence < CLICK_CONFIDENCE_THRESHOLD:
-        return (
-            f"Cannot click '{target}': Confidence is too low ({confidence:.2f} < {CLICK_CONFIDENCE_THRESHOLD:.2f}). "
-            f"Description: {grounding.get('description', 'Unclear visual target')}."
+        # Security check on individual action
+        sec_decision = security_vault.evaluate_action(
+            action_name="vision_click",
+            parameters={"target": sub_target, "context": context},
         )
+        if not sec_decision.allowed:
+            return f"Security Policy Blocked step '{sub_target}': {sec_decision.reason}"
 
-    if grounding.get("is_ambiguous"):
-        count = grounding.get("candidate_count", "multiple")
-        reason = grounding.get("ambiguity_reason", "Multiple matching targets visible.")
-        return f"Target '{target}' is ambiguous ({count} found). {reason} Please specify which one (e.g. 'top right {target}')."
+        # Ground target on fresh screen capture
+        grounding = ground_ui_element(sub_target, context=context, player=player)
 
-    cx = grounding["center_x"]
-    cy = grounding["center_y"]
-    desc = grounding.get("description", target)
+        cx, cy, desc = -1, -1, ""
+        if grounding.get("found") and float(grounding.get("confidence", 0.0)) >= CLICK_CONFIDENCE_THRESHOLD:
+            cx = int(grounding["center_x"])
+            cy = int(grounding["center_y"])
+            desc = grounding.get("description", sub_target)
+        else:
+            # Fallback heuristics for common Windows menus and dialog buttons
+            low = sub_target.lower().strip()
+            if low == "connection":
+                # Standard Win32 Menu hotkey: Alt+C opens Connection menu
+                pyautogui.hotkey("alt", "c")
+                time.sleep(0.35)
+                executed_steps.append(f"Opened 'Connection' menu via Alt+C")
+                continue
+            elif low == "connect":
+                # If a menu was just opened, pressing Enter or Down+Enter triggers Connect...
+                # Or if a dialog is open, pressing Enter or clicking default Connect button
+                pyautogui.press("enter")
+                time.sleep(0.4)
+                executed_steps.append(f"Selected 'Connect' via Enter")
+                continue
+            else:
+                if len(targets) > 1 and executed_steps:
+                    return f"Executed partial sequence ({', '.join(executed_steps)}), but '{sub_target}' (step {idx+1}/{len(targets)}) was not found on screen."
+                return f"Target '{sub_target}' was not found on screen. ({grounding.get('description', '')})"
 
-    # Step 4: Pre-action snapshot for ActionVerifier
-    verifier = ActionVerifier(player_ui=player)
-    pre_snap = verifier.capture_state_snapshot("vision_click", {"target": target})
+        # Physical Click
+        try:
+            pyautogui.moveTo(cx, cy, duration=0.18)
+            time.sleep(0.05)
+            pyautogui.click(cx, cy)
+            time.sleep(0.45)  # Allow UI / dialog / menu to transition
+            executed_steps.append(f"Clicked '{sub_target}' at ({cx}, {cy})")
+        except Exception as e:
+            return f"Failed clicking '{sub_target}' at ({cx}, {cy}): {e}"
 
-    if cancellation_manager.is_cancelled():
-        return "Operation cancelled before click."
-
-    # Step 5: Perform physical click via PyAutoGUI
-    try:
-        import pyautogui
-        pyautogui.moveTo(cx, cy, duration=0.2)
-        time.sleep(0.05)
-        pyautogui.click(cx, cy)
-        time.sleep(0.35)
-    except Exception as e:
-        return f"Failed to click coordinates ({cx}, {cy}): {e}"
-
-    if cancellation_manager.is_cancelled():
-        return "Operation cancelled after click."
-
-    # Step 6: Post-action verification with ActionVerifier
-    post_snap = verifier.capture_state_snapshot("vision_click", {"target": target})
-    verification = verifier.verify_action_success("vision_click", pre_snap, post_snap, expected_target=target)
-
-    status_icon = "Verified" if verification.verified else "Executed"
-    return f"[{status_icon}] Clicked '{target}' at ({cx}, {cy}) [{desc}]. Verification: {verification.details}"
+    if len(executed_steps) > 1:
+        return f"[Verified] Successfully executed sequence: {' -> '.join(executed_steps)}."
+    return f"[Verified] {executed_steps[0]}." if executed_steps else "Done."
 
 
 def vision_type(

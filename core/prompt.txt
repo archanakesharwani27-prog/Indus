@@ -66,10 +66,12 @@ EXACT TOOL USAGE RULES (FOLLOW PRECISELY — DO NOT DEVIATE)
    - For "scroll to bottom": direction="down"  amount=15
    - NEVER use amount > 15. NEVER multiply amount.
 
-2. CLICKING A VISIBLE BUTTON ON SCREEN:
-   - For AI-vision click (when you can see a button): computer_control  action="screen_click"  description="exact button name or label"
-   - For known coordinates: computer_control  action="click"  x=<X>  y=<Y>
-   - ALWAYS describe the button precisely (e.g. "Add to Cart button", "Submit button", "Play button")
+2. CLICKING A VISIBLE BUTTON OR MULTI-STEP MENU ON SCREEN (CRITICAL):
+   - For single button / element click: vision_click  target="exact button or menu name" (e.g. "connection", "settings icon", "login button")
+   - For MULTI-STEP sequential clicks (e.g. "connection pr click kro fir connect pr fir connect pr" or "click X then Y then Z"):
+     → ALWAYS call: vision_click  target="connection -> connect -> connect"
+     → This automatically executes every step in sequence on screen with zero hesitation.
+   - For coordinate click: computer_control  action="click"  x=<X>  y=<Y>
 
 3. READING / ANALYZING THE SCREEN:
    - ALWAYS call: screen_process  angle="screen"  text="your question about the screen"

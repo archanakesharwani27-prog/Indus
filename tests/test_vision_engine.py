@@ -3,6 +3,7 @@ import json
 import sys
 import unittest
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 from PIL import Image, ImageDraw, ImageFont
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -78,42 +79,73 @@ class TestVisionEngine(unittest.TestCase):
                 self.assertGreater(matches[0]["cx"], 0)
                 self.assertGreater(matches[0]["cy"], 0)
 
+    def setUp(self):
+        cancellation_manager.reset()
+
+    def tearDown(self):
+        cancellation_manager.reset()
+
     # 4. Structured Target Grounding with Mock Image
     def test_ground_ui_element_mock_image(self):
         mock_img = self._create_mock_gui_image()
-        grounding = ground_ui_element("Download", img=mock_img)
-        self.assertIn("found", grounding)
-        self.assertIn("confidence", grounding)
-        if grounding.get("found"):
-            cx = grounding["center_x"]
-            cy = grounding["center_y"]
-            self.assertTrue(0 <= cx <= mock_img.width)
-            self.assertTrue(0 <= cy <= mock_img.height)
+        mock_resp = {
+            "found": True,
+            "element_type": "button",
+            "center_x": 835,
+            "center_y": 610,
+            "confidence": 0.95,
+            "description": "Download Button",
+            "is_ambiguous": False
+        }
+        with patch("actions.vision_engine._get_api_key", return_value="test_key"):
+            with patch("google.genai.Client") as mock_client:
+                mock_gen = MagicMock()
+                mock_gen.models.generate_content.return_value = MagicMock(text=json.dumps(mock_resp))
+                mock_client.return_value = mock_gen
+                grounding = ground_ui_element("Download", img=mock_img)
+                self.assertIn("found", grounding)
+                self.assertIn("confidence", grounding)
+                if grounding.get("found"):
+                    cx = grounding["center_x"]
+                    cy = grounding["center_y"]
+                    self.assertTrue(0 <= cx <= mock_img.width)
+                    self.assertTrue(0 <= cy <= mock_img.height)
 
     # 5. Low Confidence Rejection Guardrail
     def test_low_confidence_rejection(self):
-        # Searching for non-existent target should return low confidence / not found
         mock_img = self._create_mock_gui_image()
-        grounding = ground_ui_element("xyz_non_existent_unicorn_button_12345", img=mock_img)
-        self.assertFalse(grounding.get("found", False))
-        self.assertLess(grounding.get("confidence", 0.0), CLICK_CONFIDENCE_THRESHOLD)
+        mock_resp = {
+            "found": False,
+            "confidence": 0.0,
+            "description": "No such element on screen"
+        }
+        with patch("actions.vision_engine._get_api_key", return_value="test_key"):
+            with patch("google.genai.Client") as mock_client:
+                mock_gen = MagicMock()
+                mock_gen.models.generate_content.return_value = MagicMock(text=json.dumps(mock_resp))
+                mock_client.return_value = mock_gen
+                grounding = ground_ui_element("xyz_non_existent_unicorn_button_12345", img=mock_img)
+                self.assertFalse(grounding.get("found", False))
+                self.assertLess(grounding.get("confidence", 0.0), CLICK_CONFIDENCE_THRESHOLD)
 
     # 6. Cancellation Guardrail During Vision Processing
     def test_cancellation_during_vision(self):
-        cancellation_manager.request_cancellation(reason="User voice 'STOP'")
-        res = ground_ui_element("Download button")
-        self.assertFalse(res.get("found", True))
-        self.assertIn("cancelled", res.get("error", "").lower())
+        try:
+            cancellation_manager.request_cancellation(reason="User voice 'STOP'")
+            res = ground_ui_element("Download button")
+            self.assertFalse(res.get("found", True))
+            self.assertIn("cancelled", res.get("error", "").lower())
 
-        v_res = screen_understand("What is on screen?")
-        self.assertIn("cancelled", v_res.lower())
+            v_res = screen_understand("What is on screen?")
+            self.assertIn("cancelled", v_res.lower())
 
-        c_res = vision_click("Download")
-        self.assertIn("cancelled", c_res.lower())
+            c_res = vision_click("Download")
+            self.assertIn("cancelled", c_res.lower())
+        finally:
+            cancellation_manager.reset()
 
     # 7. Ambiguity Handling
     def test_ambiguity_detection(self):
-        # Create image with multiple "Settings" buttons
         amb_img = Image.new("RGB", (800, 600), color=(30, 30, 30))
         draw = ImageDraw.Draw(amb_img)
         draw.rectangle([50, 50, 150, 90], fill=(70, 70, 70))
@@ -129,9 +161,14 @@ class TestVisionEngine(unittest.TestCase):
 
     # 8. Real Safe E2E Screen Understand Test
     def test_e2e_screen_understand(self):
-        answer = screen_understand("Is there any text or window visible?")
-        self.assertIsInstance(answer, str)
-        self.assertGreater(len(answer), 5)
+        with patch("actions.vision_engine._get_api_key", return_value="test_key"):
+            with patch("google.genai.Client") as mock_client:
+                mock_gen = MagicMock()
+                mock_gen.models.generate_content.return_value = MagicMock(text="A code editor window is currently open.")
+                mock_client.return_value = mock_gen
+                answer = screen_understand("Is there any text or window visible?")
+                self.assertIsInstance(answer, str)
+                self.assertGreater(len(answer), 5)
 
 
 if __name__ == "__main__":

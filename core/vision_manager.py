@@ -36,11 +36,10 @@ CONFIG_PATH = BASE_DIR / "config" / "api_keys.json"
 CLICK_CONFIDENCE_THRESHOLD = 0.60
 
 GEMINI_VISION_CANDIDATES = [
-    "gemini-2.5-flash",
-    "gemini-2.5-flash-lite",
-    "gemini-3.5-flash",
-    "gemini-3.7-flash",
     "gemini-3.6-flash",
+    "gemini-3.5-flash",
+    "gemini-3.5-flash-lite",
+    "gemini-3.7-flash",
     "gemini-flash-latest",
 ]
 
@@ -263,28 +262,36 @@ class VisionManager:
             try:
                 from google import genai
                 from google.genai import types
+                import concurrent.futures
 
                 client = genai.Client(api_key=api_key, http_options={"api_version": "v1beta"})
                 raw_bytes = base64.b64decode(b64_image)
 
                 for model_name in GEMINI_VISION_CANDIDATES:
                     try:
-                        response = client.models.generate_content(
-                            model=model_name,
-                            contents=[
-                                types.Part.from_bytes(data=raw_bytes, mime_type=mime_type),
-                                prompt,
-                            ],
-                            config={"temperature": 0.1, "response_mime_type": "application/json"},
-                        )
+                        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+                            future = executor.submit(
+                                client.models.generate_content,
+                                model=model_name,
+                                contents=[
+                                    types.Part.from_bytes(data=raw_bytes, mime_type=mime_type),
+                                    prompt,
+                                ],
+                                config=types.GenerateContentConfig(
+                                    temperature=0.1,
+                                    response_mime_type="application/json"
+                                ),
+                            )
+                            response = future.result(timeout=3.5)
                         text = response.text.strip()
-                        result_json = json.loads(text)
-                        if result_json:
+                        parsed = json.loads(text)
+                        if isinstance(parsed, dict) and ("found" in parsed or "center_x" in parsed):
+                            result_json = parsed
                             break
                     except Exception as model_err:
-                        logger.debug(f"[VisionManager] {model_name} attempt error: {model_err}")
+                        logger.debug(f"[VisionManager] {model_name} grounding error: {model_err}")
             except Exception as e:
-                logger.debug(f"[VisionManager] Gemini direct grounding error: {e}")
+                logger.warning(f"[VisionManager] Gemini direct vision grounding failed: {e}")
 
         # Fallback to or_client
         if not result_json:
