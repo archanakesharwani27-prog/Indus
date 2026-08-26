@@ -170,6 +170,34 @@ class TestVisionEngine(unittest.TestCase):
                 self.assertIsInstance(answer, str)
                 self.assertGreater(len(answer), 5)
 
+    # 9. Multi-Step Click Sequence & Spatial Grounding Test
+    def test_sequence_parsing_and_spatial_grounding(self):
+        from actions.vision_engine import _parse_click_sequence, find_ocr_keyword
+        seq1 = _parse_click_sequence("connection pr fir se click kr ke connect pr fir connect pr lick kro")
+        self.assertEqual(len(seq1), 3)
+        self.assertEqual(seq1[0][0], "connection")
+        self.assertEqual(seq1[1][0], "connect")
+        self.assertEqual(seq1[2][0], "connect")
+
+        seq2 = _parse_click_sequence("gadhi connection kr thoda sa niche hi connect hai aur fir center mein connect hai")
+        self.assertEqual(len(seq2), 3)
+        self.assertEqual(seq2[1][1], "below")
+        self.assertEqual(seq2[2][1], "center")
+
+        mock_elements = [
+            {"text": "Connection", "cx": 100, "cy": 100, "x": 80, "y": 90, "w": 40, "h": 20, "conf": 0.95},
+            {"text": "Connect...", "cx": 105, "cy": 135, "x": 80, "y": 125, "w": 50, "h": 20, "conf": 0.90},
+            {"text": "Connect", "cx": 640, "cy": 360, "x": 600, "y": 345, "w": 80, "h": 30, "conf": 0.90},
+        ]
+        # Below header
+        best_below = find_ocr_keyword("connect", mock_elements, spatial_hint="below", prev_click=(100, 100))
+        self.assertEqual(best_below[0]["text"], "Connect...")
+
+        # In center of dialog
+        best_center = find_ocr_keyword("connect", mock_elements, spatial_hint="center", prev_click=(105, 135))
+        self.assertEqual(best_center[0]["text"], "Connect")
+        self.assertEqual(best_center[0]["cx"], 640)
+
 
 if __name__ == "__main__":
     unittest.main()

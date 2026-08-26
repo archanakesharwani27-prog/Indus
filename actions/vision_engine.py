@@ -217,45 +217,52 @@ def extract_ocr_elements(img: Image.Image) -> List[Dict[str, Any]]:
     return elements
 
 
-def find_ocr_keyword(keyword: str, elements: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
-    """Find OCR elements matching keyword with exact priority and case-insensitive boundary match."""
-    if not keyword or not elements:
-        return []
-    kw = keyword.strip().lower()
-    exact_matches = []
-    prefix_matches = []
-    sub_matches = []
+SPATIAL_HINTS = {
+    "below": ("below", ["thoda sa niche", "thoda niche", "niche", "below", "down", "bottom"]),
+    "above": ("above", ["upar", "above", "top"]),
+    "center": ("center", ["center mein", "center me", "center", "middle", "beech mein", "beech me", "dialog"]),
+    "left": ("left", ["left", "bayein"]),
+    "right": ("right", ["right", "dayein"]),
+}
 
-    for el in elements:
-        t = el["text"].lower()
-        if t == kw:
-            exact_matches.append(el)
-        elif t.startswith(kw) or kw.startswith(t):
-            prefix_matches.append(el)
-        elif kw in t or t in kw:
-            sub_matches.append(el)
-
-    return exact_matches or prefix_matches or sub_matches
-
-
-# --- 3. Multimodal UI Grounding (Gemini 2.5 + OpenRouter Fallback) --------
 
 def _clean_target_text(t: str) -> str:
     """Clean conversational words and delimiters from target element names."""
     t = re.sub(r"^(?:ab\s+)?(?:screen\s+dekh(?:\s*kr|\s*kar)?\s+)?", "", t, flags=re.IGNORECASE)
-    t = re.sub(r"^(?:please\s+|kripya\s+|jarvis\s+|indus\s+)", "", t, flags=re.IGNORECASE)
-    t = re.sub(r"\b(click|kro|kr|daba|daba do|button|menu|pr|pe|par|ko)\b", " ", t, flags=re.IGNORECASE)
+    t = re.sub(r"^(?:please\s+|kripya\s+|jarvis\s+|indus\s+|gadhi\s+)", "", t, flags=re.IGNORECASE)
+    t = re.sub(
+        r"\b(click|lick|kro|kr|daba|daba do|button|menu|pr|pe|par|ko|mein|me|se|hi|bhi|aur|fir|fir se|wala|wali|thoda|thoda sa|ke|kr ke|ke baad|hai|tha|gadhi)\b",
+        " ",
+        t,
+        flags=re.IGNORECASE,
+    )
     return re.sub(r"\s+", " ", t).strip()
 
 
-def _parse_click_sequence(target_str: str) -> List[str]:
+def _extract_spatial_hint(text: str) -> Tuple[str, Optional[str]]:
+    """Extract spatial constraint (below, center, above) and clean target name."""
+    hint = None
+    cleaned = text
+    for h_type, (name, keywords) in SPATIAL_HINTS.items():
+        for kw in keywords:
+            pattern = rf"\b{re.escape(kw)}\b"
+            if re.search(pattern, cleaned, flags=re.IGNORECASE):
+                hint = name
+                cleaned = re.sub(pattern, " ", cleaned, flags=re.IGNORECASE)
+                break
+        if hint:
+            break
+    cleaned = _clean_target_text(cleaned)
+    return cleaned, hint
+
+
+def _parse_click_sequence(target_str: str) -> List[Tuple[str, Optional[str]]]:
     """
-    Parse multi-step click sequence from user phrases or delimiters.
+    Parse multi-step click sequence from user phrases or delimiters with spatial hints.
     Examples:
     - 'connection -> connect -> connect'
-    - 'connection, connect, connect'
-    - 'ab screen dekh kr connection pr click kro fir connect pr fir connect pr'
-    - 'click connection then connect then connect'
+    - 'connection pr fir se click kr ke connect pr fir connect pr lick kro'
+    - 'gadhi connection kr thoda sa niche hi connect hai aur fir center mein connect hai'
     """
     raw = (target_str or "").strip()
     if not raw:
@@ -264,27 +271,101 @@ def _parse_click_sequence(target_str: str) -> List[str]:
     # 1. Delimiter splitting
     for delim in ("->", ">>", "|", ";"):
         if delim in raw:
-            parts = [_clean_target_text(p) for p in raw.split(delim)]
-            parts = [p for p in parts if p]
+            parts = [_extract_spatial_hint(p) for p in raw.split(delim)]
+            parts = [p for p in parts if p[0]]
             if len(parts) > 1:
                 return parts
 
-    # 2. Sequential words (fir, then, aur fir, baad mein)
-    seq_split = re.split(r"\b(?:fir|then|and then|aur fir|baad mein)\b", raw, flags=re.IGNORECASE)
-    cleaned_seq = [_clean_target_text(s) for s in seq_split]
-    cleaned_seq = [s for s in cleaned_seq if s]
+    # 2. Sequential connectors
+    seq_split = re.split(
+        r"\b(?:aur fir|fir se|fir|then|and then|baad mein|kr ke|ke baad|aur|kr)\b",
+        raw,
+        flags=re.IGNORECASE,
+    )
+    cleaned_seq = [_extract_spatial_hint(s) for s in seq_split]
+    cleaned_seq = [s for s in cleaned_seq if s[0]]
     if len(cleaned_seq) > 1:
         return cleaned_seq
 
     # 3. Comma-separated
     if "," in raw:
-        parts = [_clean_target_text(p) for p in raw.split(",")]
-        parts = [p for p in parts if p]
+        parts = [_extract_spatial_hint(p) for p in raw.split(",")]
+        parts = [p for p in parts if p[0]]
         if len(parts) > 1:
             return parts
 
-    single = _clean_target_text(raw)
-    return [single] if single else [raw]
+    single_clean, hint = _extract_spatial_hint(raw)
+    return [(single_clean, hint)] if single_clean else [(raw, None)]
+
+
+def find_ocr_keyword(
+    keyword: str,
+    elements: List[Dict[str, Any]],
+    spatial_hint: Optional[str] = None,
+    prev_click: Optional[Tuple[int, int]] = None,
+    screen_w: int = 1920,
+    screen_h: int = 1080,
+) -> List[Dict[str, Any]]:
+    """Find and rank OCR elements matching keyword with fuzzy matching and spatial awareness."""
+    if not keyword or not elements:
+        return []
+    import difflib
+
+    kw = keyword.strip().lower()
+    exact_matches = []
+    prefix_matches = []
+    sub_matches = []
+    fuzzy_matches = []
+
+    for el in elements:
+        t = el["text"].lower().rstrip(".").strip()
+        if t == kw:
+            exact_matches.append(el)
+        elif t.startswith(kw) or kw.startswith(t):
+            prefix_matches.append(el)
+        elif kw in t or t in kw:
+            sub_matches.append(el)
+        elif difflib.SequenceMatcher(None, kw, t).ratio() >= 0.78:
+            fuzzy_matches.append(el)
+
+    candidates = exact_matches or prefix_matches or sub_matches or fuzzy_matches
+    if not candidates:
+        return []
+    if len(candidates) == 1 and not spatial_hint and not prev_click:
+        return candidates
+
+    # Rank candidates with spatial constraints
+    scored = []
+    for c in candidates:
+        score = float(c.get("conf", 0.8))
+        t = c["text"].lower().rstrip(".").strip()
+        if t == kw:
+            score += 0.4
+        elif t.startswith(kw):
+            score += 0.2
+
+        cx, cy = c["cx"], c["cy"]
+
+        # Below previous click (e.g. dropdown menu below clicked header)
+        if spatial_hint == "below" or (prev_click and prev_click[1] < cy):
+            if prev_click and cy > prev_click[1]:
+                score += 0.6
+                dx = abs(cx - prev_click[0])
+                if dx < 300:
+                    score += 0.4
+            elif cy > screen_h * 0.15:
+                score += 0.2
+
+        # Center of screen / active dialog
+        if spatial_hint == "center" or (prev_click and spatial_hint is None and cy > prev_click[1] + 100):
+            dist = ((cx - screen_w / 2) ** 2 + (cy - screen_h / 2) ** 2) ** 0.5
+            max_d = (screen_w**2 + screen_h**2) ** 0.5 / 2
+            score += (1.0 - (dist / max_d)) * 0.8
+
+        scored.append((score, c))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    return [s[1] for s in scored]
 
 
 # --- 3. Multimodal UI Grounding (Gemini 3.6/3.5 + OpenRouter Fallback) -----
@@ -293,6 +374,8 @@ def ground_ui_element(
     target_description: str,
     context: str = "",
     img: Optional[Image.Image] = None,
+    spatial_hint: Optional[str] = None,
+    prev_click: Optional[Tuple[int, int]] = None,
     player=None,
 ) -> Dict[str, Any]:
     """
@@ -319,9 +402,16 @@ def ground_ui_element(
     if player:
         player.write_log(f"[Vision] Grounding target: '{clean_target}' on {screen_w}x{screen_h} screen")
 
-    # Step 1: Fast local OCR matching for exact text buttons
+    # Step 1: Fast local OCR matching for exact text buttons with spatial awareness
     ocr_elements = extract_ocr_elements(img)
-    ocr_matches = find_ocr_keyword(clean_target, ocr_elements)
+    ocr_matches = find_ocr_keyword(
+        clean_target,
+        ocr_elements,
+        spatial_hint=spatial_hint,
+        prev_click=prev_click,
+        screen_w=screen_w,
+        screen_h=screen_h,
+    )
     if ocr_matches and ocr_matches[0].get("conf", 0) > 0.70:
         best_ocr = ocr_matches[0]
         return {
@@ -561,11 +651,17 @@ def vision_click(target: str, context: str = "", player=None) -> str:
 
     targets = _parse_click_sequence(target)
     if not targets:
-        targets = [target]
+        targets = [(target, None)]
 
     executed_steps = []
+    prev_click = None
 
-    for idx, sub_target in enumerate(targets):
+    for idx, item in enumerate(targets):
+        if isinstance(item, tuple):
+            sub_target, spatial_hint = item
+        else:
+            sub_target, spatial_hint = item, None
+
         if cancellation_manager.is_cancelled():
             return f"Operation cancelled by user at step {idx+1}/{len(targets)}."
 
@@ -581,8 +677,21 @@ def vision_click(target: str, context: str = "", player=None) -> str:
         if not sec_decision.allowed:
             return f"Security Policy Blocked step '{sub_target}': {sec_decision.reason}"
 
-        # Ground target on fresh screen capture
-        grounding = ground_ui_element(sub_target, context=context, player=player)
+        # Dynamic visual settle polling for multi-step transitions (e.g. dropdown menu or dialog opening)
+        grounding = {}
+        for poll_attempt in range(5):
+            grounding = ground_ui_element(
+                sub_target,
+                context=context,
+                spatial_hint=spatial_hint,
+                prev_click=prev_click,
+                player=player,
+            )
+            if grounding.get("found") and float(grounding.get("confidence", 0.0)) >= CLICK_CONFIDENCE_THRESHOLD:
+                break
+            if idx == 0 or poll_attempt >= 3:
+                break
+            time.sleep(0.20)
 
         cx, cy, desc = -1, -1, ""
         if grounding.get("found") and float(grounding.get("confidence", 0.0)) >= CLICK_CONFIDENCE_THRESHOLD:
@@ -593,14 +702,11 @@ def vision_click(target: str, context: str = "", player=None) -> str:
             # Fallback heuristics for common Windows menus and dialog buttons
             low = sub_target.lower().strip()
             if low == "connection":
-                # Standard Win32 Menu hotkey: Alt+C opens Connection menu
                 pyautogui.hotkey("alt", "c")
                 time.sleep(0.35)
                 executed_steps.append(f"Opened 'Connection' menu via Alt+C")
                 continue
             elif low == "connect":
-                # If a menu was just opened, pressing Enter or Down+Enter triggers Connect...
-                # Or if a dialog is open, pressing Enter or clicking default Connect button
                 pyautogui.press("enter")
                 time.sleep(0.4)
                 executed_steps.append(f"Selected 'Connect' via Enter")
@@ -615,7 +721,8 @@ def vision_click(target: str, context: str = "", player=None) -> str:
             pyautogui.moveTo(cx, cy, duration=0.18)
             time.sleep(0.05)
             pyautogui.click(cx, cy)
-            time.sleep(0.45)  # Allow UI / dialog / menu to transition
+            prev_click = (cx, cy)
+            time.sleep(0.40)  # Allow UI / dialog / menu to transition
             executed_steps.append(f"Clicked '{sub_target}' at ({cx}, {cy})")
         except Exception as e:
             return f"Failed clicking '{sub_target}' at ({cx}, {cy}): {e}"
