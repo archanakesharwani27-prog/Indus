@@ -1180,7 +1180,50 @@ TOOL_DECLARATIONS = [
             "required": ["app_name"]
         }
     },
+    {
+        "name": "search_conversation_history",
+        "description": (
+            "Searches past conversation turns, previous sessions, and chat history by keyword, topic, date "
+            "('yesterday', 'kal', '25 August', 'last week'), or generic history requests "
+            "('previous conversation', 'pichli baat', 'what did we talk about'). "
+            "Returns accurate timestamps, dates, user messages, and INDUS responses."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "query": {
+                    "type": "STRING",
+                    "description": "Search keyword, topic, date, or leave empty/generic for recent history"
+                }
+            },
+            "required": []
+        }
+    },
+    {
+        "name": "recall_memory",
+        "description": (
+            "Recalls saved personal facts, preferences, habits, projects, and user profile information stored in permanent long-term memory."
+        ),
+        "parameters": {
+            "type": "OBJECT",
+            "properties": {
+                "query": {
+                    "type": "STRING",
+                    "description": "Fact keyword or query to recall (e.g. 'name', 'theme', 'size', 'birthday', 'city')"
+                },
+                "category": {
+                    "type": "STRING",
+                    "description": "Optional category: identity | preferences | habits | projects | relationships | wishes | notes"
+                }
+            },
+            "required": []
+        }
+    },
 ]
+
+import atexit
+from memory.memory_manager import flush_memory_on_shutdown
+atexit.register(flush_memory_on_shutdown)
 
 
 

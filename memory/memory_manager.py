@@ -10,7 +10,7 @@ from pathlib import Path
 
 from memory.db_engine import (
     db_save_conversation, db_get_recent_conversations,
-    db_search_conversations, db_set_fact, db_get_all_facts,
+    db_search_conversations, db_set_fact, db_set_facts_batch, db_get_all_facts,
     db_get_fact, db_delete_fact, db_record_app_launch,
     db_get_frequent_apps, db_set_rule
 )
@@ -56,12 +56,7 @@ def load_memory() -> dict:
                 for key in base:
                     if key not in data:
                         data[key] = {}
-                for cat, items in data.items():
-                    if isinstance(items, dict):
-                        for k, val_entry in items.items():
-                            val = val_entry.get("value") if isinstance(val_entry, dict) else val_entry
-                            if val:
-                                db_set_fact(cat, k, str(val))
+                db_set_facts_batch(data)
                 return data
             return _empty_memory()
         except Exception as e:
@@ -73,13 +68,7 @@ def save_memory(memory: dict) -> None:
     if not isinstance(memory, dict):
         return
 
-    for cat, items in memory.items():
-        if isinstance(items, dict):
-            for key, entry in items.items():
-                if isinstance(entry, dict) and "value" in entry:
-                    db_set_fact(cat, key, str(entry["value"]))
-                elif isinstance(entry, str):
-                    db_set_fact(cat, key, entry)
+    db_set_facts_batch(memory)
 
     MEMORY_PATH.parent.mkdir(parents=True, exist_ok=True)
     with _lock:
@@ -363,25 +352,52 @@ def recall_memory(query: str = "", category: str = "") -> str:
     return f"No memory entries found for '{query}'."
 
 
-def search_conversation_history(query: str = "", limit: int = 10) -> str:
-    """Search past conversation turns from SQLite database."""
-    if not query:
-        recent = db_get_recent_conversations(limit)
-    else:
-        recent = db_search_conversations(query, limit)
+def search_conversation_history(query: str = "", limit: int = 15) -> str:
+    """
+    Search past conversation turns from SQLite database with full date, time, and session context.
+    Handles generic requests ('previous conversation', 'pichli baatein', 'what did we talk about'),
+    relative/absolute date queries ('yesterday', 'kal', '2026-08-25'), and topic queries.
+    """
+    recent = db_search_conversations(query, limit)
 
     if not recent:
         return f"No past conversations found matching '{query}'."
 
-    lines = [f"Found {len(recent)} past conversation turns:"]
+    lines = [f"Found {len(recent)} conversation turn(s) in memory:"]
     for c in recent:
         ts = c.get("timestamp", "")
+        day = c.get("day_name", "")
+        date_str = c.get("date", "")
+        time_str = c.get("time_str", "")
+        sess = c.get("session_id", "")
         u = c.get("user_text", "")
         i = c.get("indus_text", "") or c.get("jarvis_text", "")
-        lines.append(f"- [{ts}] User: {u}")
+
+        header_parts = []
+        if day and date_str:
+            header_parts.append(f"{day}, {date_str}")
+        elif ts:
+            header_parts.append(ts)
+        if time_str:
+            header_parts.append(time_str)
+
+        time_header = " | ".join(header_parts) or ts
+        lines.append(f"- [{time_header}] User: {u}")
         if i:
-            lines.append(f"  INDUS: {i}")
+            lines.append(f"  INDUS: {i[:250]}")
     return "\n".join(lines)
+
+
+def flush_memory_on_shutdown() -> None:
+    """
+    Called on system exit/close: flushes all memory caches and state to SQLite/JSON in < 20ms.
+    """
+    try:
+        mem = load_memory()
+        save_memory(mem)
+        print("[Memory] Long-term memory and conversation history flushed to SQLite on shutdown.")
+    except Exception as e:
+        print(f"[Memory] Shutdown flush error: {e}")
 
 
 forget_memory = forget

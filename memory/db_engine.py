@@ -25,6 +25,25 @@ def get_connection():
     conn.row_factory = sqlite3.Row
     return conn
 
+CURRENT_SESSION_ID = f"session_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+
+GENERIC_HISTORY_PHRASES = [
+    "previous conversation", "pichli conversation", "past conversation",
+    "last conversation", "previous session", "pichla session", "last session",
+    "recent chats", "history", "kya baatein hui thi", "kya baat kri thi",
+    "kya baat hui thi", "all conversations", "purani baatein", "pehle kya baat",
+    "what did we talk about", "what were we talking about", "previous chats",
+    "conversation history", "chat history", "pichli baatein", "pehle wali baat",
+]
+
+
+def is_generic_history_query(q: str) -> bool:
+    if not q or not q.strip():
+        return True
+    q_low = q.lower().strip()
+    return any(phrase in q_low or q_low in phrase for phrase in GENERIC_HISTORY_PHRASES)
+
+
 def init_db():
     with _db_lock:
         conn = get_connection()
@@ -33,11 +52,24 @@ def init_db():
             CREATE TABLE IF NOT EXISTS conversations (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 timestamp TEXT NOT NULL,
+                session_id TEXT DEFAULT '',
+                date TEXT DEFAULT '',
+                time_str TEXT DEFAULT '',
+                day_name TEXT DEFAULT '',
+                year TEXT DEFAULT '',
+                month TEXT DEFAULT '',
                 user_text TEXT NOT NULL,
                 indus_text TEXT NOT NULL,
                 intent TEXT DEFAULT '',
                 summary TEXT DEFAULT '',
                 tags TEXT DEFAULT ''
+            )
+        ''')
+        cursor.execute('''
+            CREATE TABLE IF NOT EXISTS system_state (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL
             )
         ''')
         cursor.execute('''
@@ -81,27 +113,107 @@ def init_db():
                 status TEXT NOT NULL
             )
         ''')
+
+        # Auto-migrate columns if table already existed
+        cursor.execute("PRAGMA table_info(conversations)")
+        cols = [row[1] for row in cursor.fetchall()]
+        new_cols = {
+            "session_id": "TEXT DEFAULT ''",
+            "date": "TEXT DEFAULT ''",
+            "time_str": "TEXT DEFAULT ''",
+            "day_name": "TEXT DEFAULT ''",
+            "year": "TEXT DEFAULT ''",
+            "month": "TEXT DEFAULT ''",
+        }
+        for col_name, col_type in new_cols.items():
+            if col_name not in cols:
+                try:
+                    cursor.execute(f"ALTER TABLE conversations ADD COLUMN {col_name} {col_type}")
+                except Exception:
+                    pass
+
         conn.commit()
         conn.close()
 
 init_db()
 
-def db_save_conversation(user_text: str, indus_text: str, intent: str = "", summary: str = "", tags: str = "") -> None:
-    if not user_text and not indus_text:
-        return
+
+# ── Cumulative System Uptime Management ─────────────────────────────────────
+
+def db_get_cumulative_uptime() -> float:
+    """Retrieve cumulative system uptime in seconds across all sessions."""
+    with _db_lock:
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT value FROM system_state WHERE key = 'cumulative_uptime_seconds'")
+            row = cursor.fetchone()
+            conn.close()
+            if row and row[0]:
+                return float(row[0])
+        except Exception as e:
+            print(f"[DB] Error getting cumulative uptime: {e}")
+    return 0.0
+
+
+def db_save_cumulative_uptime(uptime_seconds: float) -> None:
+    """Persist cumulative system uptime in seconds to SQLite system_state."""
     with _db_lock:
         try:
             conn = get_connection()
             cursor = conn.cursor()
             now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            cursor.execute("""
+                INSERT INTO system_state (key, value, updated_at)
+                VALUES ('cumulative_uptime_seconds', ?, ?)
+                ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at
+            """, (str(uptime_seconds), now_str))
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"[DB] Error saving cumulative uptime: {e}")
+
+
+# ── Conversation Turn Storage & Search ──────────────────────────────────────
+
+def db_save_conversation(
+    user_text: str,
+    indus_text: str,
+    intent: str = "",
+    summary: str = "",
+    tags: str = "",
+    session_id: str = "",
+) -> None:
+    if not user_text and not indus_text:
+        return
+    sess = session_id or CURRENT_SESSION_ID
+    now = datetime.now()
+    now_str = now.strftime("%Y-%m-%d %H:%M:%S")
+    date_str = now.strftime("%Y-%m-%d")
+    time_str = now.strftime("%H:%M:%S")
+    day_name = now.strftime("%A")
+    year_str = now.strftime("%Y")
+    month_str = now.strftime("%m")
+
+    with _db_lock:
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
             cursor.execute(
-                "INSERT INTO conversations (timestamp, user_text, indus_text, intent, summary, tags) VALUES (?, ?, ?, ?, ?, ?)",
-                (now_str, user_text.strip(), indus_text.strip(), intent, summary, tags)
+                """INSERT INTO conversations (
+                    timestamp, session_id, date, time_str, day_name, year, month,
+                    user_text, indus_text, intent, summary, tags
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                (
+                    now_str, sess, date_str, time_str, day_name, year_str, month_str,
+                    user_text.strip(), indus_text.strip(), intent, summary, tags
+                )
             )
             conn.commit()
             conn.close()
         except Exception as e:
             print(f"[DB] Error saving conversation: {e}")
+
 
 def db_get_recent_conversations(limit: int = 20) -> list:
     with _db_lock:
@@ -109,7 +221,9 @@ def db_get_recent_conversations(limit: int = 20) -> list:
             conn = get_connection()
             cursor = conn.cursor()
             cursor.execute(
-                "SELECT timestamp, user_text, indus_text, intent, summary FROM conversations ORDER BY id DESC LIMIT ?",
+                """SELECT timestamp, session_id, date, time_str, day_name, year, month,
+                          user_text, indus_text, intent, summary
+                   FROM conversations ORDER BY id DESC LIMIT ?""",
                 (limit,)
             )
             rows = cursor.fetchall()
@@ -119,15 +233,63 @@ def db_get_recent_conversations(limit: int = 20) -> list:
             print(f"[DB] Error getting recent conversations: {e}")
             return []
 
-def db_search_conversations(query: str, limit: int = 10) -> list:
+
+def db_search_conversations(query: str = "", limit: int = 15) -> list:
+    """
+    Intelligent conversation search supporting:
+    1. Generic history requests ('previous conversation', 'pichli baatein') -> returns recent chronological turns
+    2. Relative/Absolute date queries ('yesterday', 'kal', '2026-08-25') -> filters by date
+    3. Topic / Keyword queries ('WO Mic', 'volume', 'python') -> matches text or summary
+    """
+    from datetime import timedelta
+
     with _db_lock:
         try:
             conn = get_connection()
             cursor = conn.cursor()
-            search_pattern = f"%{query}%"
+            q_clean = (query or "").strip()
+
+            # 1. Generic History Query
+            if is_generic_history_query(q_clean):
+                cursor.execute(
+                    """SELECT id, timestamp, session_id, date, time_str, day_name,
+                              user_text, indus_text, intent, summary
+                       FROM conversations ORDER BY id DESC LIMIT ?""",
+                    (limit,)
+                )
+                rows = cursor.fetchall()
+                conn.close()
+                return [dict(r) for r in reversed(rows)]
+
+            # 2. Date Filtering (kal, yesterday, today, YYYY-MM-DD, Month)
+            q_low = q_clean.lower()
+            date_pat = None
+            if "yesterday" in q_low or "kal" in q_low:
+                date_pat = (datetime.now() - timedelta(days=1)).strftime("%Y-%m-%d") + "%"
+            elif "today" in q_low or "aaj" in q_low:
+                date_pat = datetime.now().strftime("%Y-%m-%d") + "%"
+
+            if date_pat:
+                cursor.execute(
+                    """SELECT id, timestamp, session_id, date, time_str, day_name,
+                              user_text, indus_text, intent, summary
+                       FROM conversations WHERE timestamp LIKE ? ORDER BY id ASC LIMIT ?""",
+                    (date_pat, limit)
+                )
+                rows = cursor.fetchall()
+                if rows:
+                    conn.close()
+                    return [dict(r) for r in rows]
+
+            # 3. Topic / Keyword matching
+            search_pattern = f"%{q_clean}%"
             cursor.execute(
-                "SELECT timestamp, user_text, indus_text, summary FROM conversations WHERE user_text LIKE ? OR indus_text LIKE ? ORDER BY id DESC LIMIT ?",
-                (search_pattern, search_pattern, limit)
+                """SELECT id, timestamp, session_id, date, time_str, day_name,
+                          user_text, indus_text, intent, summary
+                   FROM conversations
+                   WHERE user_text LIKE ? OR indus_text LIKE ? OR summary LIKE ? OR session_id LIKE ?
+                   ORDER BY id DESC LIMIT ?""",
+                (search_pattern, search_pattern, search_pattern, search_pattern, limit)
             )
             rows = cursor.fetchall()
             conn.close()
@@ -158,6 +320,42 @@ def db_set_fact(category: str, key: str, value: str, confidence: float = 1.0, so
             conn.close()
         except Exception as e:
             print(f"[DB] Error setting fact: {e}")
+
+
+def db_set_facts_batch(facts_dict: dict, confidence: float = 1.0, source: str = "direct") -> None:
+    """High-speed batch insert/update for all facts in a single SQLite transaction."""
+    if not facts_dict or not isinstance(facts_dict, dict):
+        return
+    now_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    params = []
+    for cat, items in facts_dict.items():
+        if isinstance(items, dict):
+            for k, val_entry in items.items():
+                val = val_entry.get("value") if isinstance(val_entry, dict) else str(val_entry)
+                if k and val:
+                    params.append((cat, k.strip().lower(), str(val).strip(), confidence, source, now_str))
+
+    if not params:
+        return
+
+    with _db_lock:
+        try:
+            conn = get_connection()
+            cursor = conn.cursor()
+            cursor.executemany("""
+                INSERT INTO user_profile (category, key, value, confidence, source, last_updated)
+                VALUES (?, ?, ?, ?, ?, ?)
+                ON CONFLICT(key) DO UPDATE SET
+                    category = excluded.category,
+                    value = excluded.value,
+                    confidence = excluded.confidence,
+                    source = excluded.source,
+                    last_updated = excluded.last_updated
+            """, params)
+            conn.commit()
+            conn.close()
+        except Exception as e:
+            print(f"[DB] Error setting facts batch: {e}")
 
 def db_get_all_facts() -> dict:
     with _db_lock:

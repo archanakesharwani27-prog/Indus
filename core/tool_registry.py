@@ -375,6 +375,26 @@ def _security_vault(parameters: dict, player: Any):
     return security_vault(parameters=parameters, player=player)
 
 
+# -- Memory & Long-term Conversation History -----------------------------------
+
+@_reg("search_conversation_history")
+def _search_conversation_history(parameters: dict, player: Any):
+    from memory.memory_manager import search_conversation_history
+    return search_conversation_history(
+        query=parameters.get("query", ""),
+        limit=parameters.get("limit", 15),
+    )
+
+
+@_reg("recall_memory")
+def _recall_memory(parameters: dict, player: Any):
+    from memory.memory_manager import recall_memory
+    return recall_memory(
+        query=parameters.get("query", ""),
+        category=parameters.get("category", ""),
+    )
+
+
 # Legacy aliases present in older agent_loop plans
 @_reg("cmd_control")
 def _cmd_control(parameters: dict, player: Any):

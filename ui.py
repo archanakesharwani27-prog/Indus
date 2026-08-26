@@ -1518,6 +1518,13 @@ class MainWindow(QMainWindow):
         self._muted           = False
         self._commands_count  = 0
         self._start_time      = time.time()
+        self._uptime_tick_count = 0
+        self._accumulated_uptime = 0.0
+        try:
+            from memory.db_engine import db_get_cumulative_uptime
+            self._accumulated_uptime = db_get_cumulative_uptime()
+        except Exception:
+            pass
 
         central = QWidget()
         central.setStyleSheet(f"background: {C.BG};")
@@ -1623,7 +1630,20 @@ class MainWindow(QMainWindow):
             pass   # never crash the UI from a backend event
 
     def closeEvent(self, event):
-        """Unsubscribe from EventBus before Qt destroys this window."""
+        """Save cumulative uptime, flush memory, and cleanup on close."""
+        try:
+            total_seconds = int(self._accumulated_uptime + (time.time() - self._start_time))
+            from memory.db_engine import db_save_cumulative_uptime
+            db_save_cumulative_uptime(total_seconds)
+        except Exception:
+            pass
+
+        try:
+            from memory.memory_manager import flush_memory_on_shutdown
+            flush_memory_on_shutdown()
+        except Exception:
+            pass
+
         if getattr(self, "_event_bus_ref", None) is not None:
             try:
                 self._event_bus_ref.unsubscribe(None, self._eb_handler)
@@ -1825,8 +1845,20 @@ class MainWindow(QMainWindow):
     def _tick_clock(self):
         self._clock_lbl.setText(time.strftime("%H:%M:%S"))
         self._date_lbl.setText(time.strftime("%a %d %b %Y").upper())
-        elapsed = int(time.time() - self._start_time)
-        self._uptime_lbl.setText(f"{elapsed//3600:02d}:{(elapsed%3600)//60:02d}:{elapsed%60:02d}")
+        session_elapsed = time.time() - self._start_time
+        total_seconds = int(self._accumulated_uptime + session_elapsed)
+        hours = total_seconds // 3600
+        mins = (total_seconds % 3600) // 60
+        secs = total_seconds % 60
+        self._uptime_lbl.setText(f"{hours:02d}:{mins:02d}:{secs:02d}")
+
+        self._uptime_tick_count += 1
+        if self._uptime_tick_count % 10 == 0:
+            try:
+                from memory.db_engine import db_save_cumulative_uptime
+                db_save_cumulative_uptime(total_seconds)
+            except Exception:
+                pass
 
     def _update_metrics(self):
         snap = _metrics.snapshot()
