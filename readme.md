@@ -123,13 +123,14 @@ Unlike standard chatbot wrappers, **INDUS** operates as an autonomous agent dire
 | Category | Tools & Handlers | Description |
 |---|---|---|
 | **OS & Desktop** | open_app, desktop_control, computer_control, computer_settings | Control windows, click buttons, change system volume/brightness, launch apps |
-| **Vision & Screen** | screen_understand, ision_click, ision_type, ision_scroll, ision_engine | Ground UI coordinates, read text on screen, click anywhere visually |
+| **Vision & Screen** | screen_understand, vision_click,vision_type, vision_scroll, vision_engine | Ground UI coordinates, read text on screen, click anywhere visually |
 | **Web & Research** | deep_research, web_search, rowser_control, light_finder | Multi-source DuckDuckGo/Tavily research, browse web, compare flights |
-| **Media & Audio** | stream_content, youtube_video, ideo_editor, universal_ad_skipper | Stream movies, autonomous YouTube navigation, FFmpeg video editing, skip video ads |
-| **Developer Tools**| code_helper, dev_agent, git_controller, 	erminal_command, live_writer | Write code, run CLI commands, git version control, live desktop note generation |
+| **Media & Audio** | stream_content, youtube_video, video_editor, universal_ad_skipper | Stream movies, autonomous YouTube navigation, FFmpeg video editing, skip video ads |
+| **Developer Tools**| code_helper, dev_agent, git_controller, 	terminal_command, live_writer | Write code, run CLI commands, git version control, live desktop note generation |
 | **Hardware & IoT** | mobile_bridge, luetooth_control, smart_home | Android ADB wireless bridge (calls, SMS, battery), bluetooth devices, smart lights |
 | **System Security**| security_vault, security_protocols, system_radar | Manage PBKDF2 PIN, execute emergency protocols, monitor running processes |
-| **Shopping & Daily**| search_and_show_products, proceed_to_cart_and_checkout, eminder | Search e-commerce deals, automate checkout steps, set scheduled alarms |
+| **Shopping & Daily**| search_and_show_products, proceed_to_cart_and_checkout, 
+reminder| Search e-commerce deals, automate checkout steps, set scheduled alarms |
 
 ---
 
@@ -137,13 +138,13 @@ Unlike standard chatbot wrappers, **INDUS** operates as an autonomous agent dire
 
 ### 🚀 Option A: One-Click GUI Installer (No Python Needed)
 1. Download INDUS_Setup_2026.exe from the latest release.
-2. Double-click the installer, paste your Gemini API key (optional), and click **Install**.
+2. Double-click the installer, paste your Gemini API key , and click **Install**.
 3. Launch INDUS directly from your Desktop shortcut!
 
 ### 💻 Option B: Run from Source (Developers)
 
 #### 1. Clone the repository
-`ash
+`bash
 git clone https://github.com/archanakesharwani27-prog/Indus.git
 cd Indus
 `
@@ -164,12 +165,12 @@ Copy config/api_keys.example.json to config/api_keys.json:
 `
 
 #### 4. Run the preflight hardware & dependency check
-`ash
+`bash
 python scripts/preflight_check.py
 `
 
 #### 5. Launch INDUS
-`ash
+`bash
 python main.py
 `
 
@@ -179,7 +180,7 @@ python main.py
 
 INDUS comes with a complete regression test suite verifying all 11 core subsystems:
 
-`ash
+`bash
 python tests/run_all_tests.py
 `
 
